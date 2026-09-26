@@ -51,6 +51,17 @@ uint8_t http_take_pending(http_conn_t *c) { (void)c; return 0; }
 void http_poll(void) {}
 void http_check_timeouts(void) {}
 void http_fire_c_pending(void) {}
+void http_reap(void) {}
+http_state_t http_get_state(http_conn_t *c) { (void)c; return HTTP_STATE_FAILED; }
+const char *http_get_error(http_conn_t *c) { (void)c; return "Networking is not available in the web demo"; }
+bool http_headers_ready(http_conn_t *c) { (void)c; return false; }
+int http_get_status(http_conn_t *c) { (void)c; return 0; }
+void http_get_progress(http_conn_t *c, int *received, int *total) {
+    (void)c;
+    if (received) *received = 0;
+    if (total) *total = 0;
+}
+bool http_is_complete(http_conn_t *c) { (void)c; return true; }
 
 // ── TCP (src/drivers/tcp.h) ──────────────────────────────────────────────────
 
@@ -69,3 +80,9 @@ uint32_t tcp_bytes_available(tcp_conn_t *c) { (void)c; return 0; }
 const char *tcp_get_error(tcp_conn_t *c) { (void)c; return "Networking is not available in the web demo"; }
 uint32_t tcp_take_pending(tcp_conn_t *c) { (void)c; return 0; }
 void tcp_check_timeouts(void) {}
+void tcp_reap(void) {}
+void tcp_close_all(void) {}
+tcp_conn_state_t tcp_get_state(tcp_conn_t *c) { (void)c; return TCP_STATE_FAILED; }
+uint32_t tcp_take_pending_bits(tcp_conn_t *c, uint32_t mask) { (void)c; (void)mask; return 0; }
+void tcp_set_connect_timeout(tcp_conn_t *c, uint32_t ms) { (void)c; (void)ms; }
+void tcp_set_read_timeout(tcp_conn_t *c, uint32_t ms) { (void)c; (void)ms; }

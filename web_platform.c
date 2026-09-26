@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #include "web_platform.h"
+#include "sim_socket.h"  // sim_socket_notify* stubs below
 
 extern void hal_audio_update(void);
 extern void mod_player_update(void);
@@ -105,9 +106,16 @@ EMSCRIPTEN_KEEPALIVE void web_type_char(int c) {
 }
 
 // ── sim_socket_handler.c hooks (no RPC socket in the browser) ────────────────
+// sim_handler_check_launch and sim_log_append come from sim_test_control.c,
+// which the web build compiles (it has no socket code of its own).
 
-bool sim_handler_check_launch(void) { return false; }
-void sim_log_append(const char *line) { (void)line; }
+// sim_socket.c is not built: sim_test_control.c's notifications go nowhere.
+void sim_socket_notify(const char *method, const char *params_json) {
+    (void)method; (void)params_json;
+}
+void sim_socket_notify_log_subscribers(const char *json_line, size_t len) {
+    (void)json_line; (void)len;
+}
 
 static void *s_active_terminal;
 void sim_set_active_terminal(void *term) { s_active_terminal = term; }
