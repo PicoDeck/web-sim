@@ -1,4 +1,4 @@
-// The page glue for the PicoDeck web simulator, shared by simulator/web/shell.html
+// The page glue for the PicoDeck web simulator, shared by page/shell.html
 // (local builds) and picodeck.net/try/, which loads it from the release zip.
 // Load it before picodeck_simulator.js: it defines Module. Needs a <canvas id="canvas">;
 // #status, the #pad keys and the #textsink soft keyboard are optional.

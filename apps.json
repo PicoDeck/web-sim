@@ -1,0 +1,15 @@
+{
+  "builtin": ["snake", "nonogram", "calculator", "editor", "3dtest"],
+  "store": [
+    {
+      "dir": "blockexe",
+      "url": "https://github.com/PicoDeck/blockexe/releases/download/v1.0.3/picodeck-blockexe-v1.0.3.zip",
+      "sha256": "66cc0c9ebc251e704a78ecf540b94ca6bab2055bf66f96ea550319e9a8dbcac7"
+    },
+    {
+      "dir": "brick15",
+      "url": "https://github.com/PicoDeck/brick15/releases/download/v1.0.0/picodeck-brick15-v1.0.0.zip",
+      "sha256": "c57e9ecd5ee2d5fa10e119d42369c2b4e20d8256b9eeb8f82d822c6c9523af8e"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+.worktrees/
+node_modules/
+build/
+build-test/
+picodeck/
+picodeck-web-sim.zip
+test-results/
+playwright-report/
