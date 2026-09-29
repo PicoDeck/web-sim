@@ -1,0 +1,33 @@
+# Every push and pull request: unit tests, then build and test against the
+# latest PicoDeck release. Run it by hand with a PicoDeck ref to try an
+# unreleased firmware (the artifact is the page; nothing is published).
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      picodeck_ref:
+        description: PicoDeck tag, branch or commit (empty = the latest release)
+        required: false
+        default: ''
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build:
+    needs: unit
+    uses: ./.github/workflows/build.yml
+    with:
+      picodeck_ref: ${{ inputs.picodeck_ref || '' }}

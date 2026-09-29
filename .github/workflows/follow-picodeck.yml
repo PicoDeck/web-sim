@@ -1,0 +1,71 @@
+# Follows PicoDeck's releases: when PicoDeck publishes one (its release.yml
+# sends `picodeck-release`, or the daily check finds it), build and test
+# against it and, if everything passes, publish the next patch release. A
+# failure publishes nothing: picodeck.net keeps the previous demo.
+name: follow-picodeck
+
+on:
+  repository_dispatch:
+    types: [picodeck-release]
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: follow-picodeck
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      follow: ${{ steps.decide.outputs.follow }}
+      picodeck_ref: ${{ steps.decide.outputs.picodeck_ref }}
+      next: ${{ steps.decide.outputs.next }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Is there a newer PicoDeck release?
+        id: decide
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/should-follow.mjs
+
+  build:
+    needs: check
+    if: needs.check.outputs.follow == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      picodeck_ref: ${{ needs.check.outputs.picodeck_ref }}
+      web_sim_version: ${{ needs.check.outputs.next }}
+
+  release:
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    env:
+      HAVE_PAGES_HOOK: ${{ secrets.PAGES_DEPLOY_HOOK != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-sim
+      - name: Publish ${{ needs.check.outputs.next }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/publish.sh "${{ needs.check.outputs.next }}" "${{ github.sha }}"
+      - name: Rebuild picodeck.net
+        if: env.HAVE_PAGES_HOOK == 'true'
+        env:
+          PAGES_DEPLOY_HOOK: ${{ secrets.PAGES_DEPLOY_HOOK }}
+        run: curl -fsS -X POST "$PAGES_DEPLOY_HOOK" > /dev/null

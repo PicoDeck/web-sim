@@ -1,0 +1,41 @@
+# A pushed vX.Y.Z tag: build and test against the latest PicoDeck release,
+# publish picodeck-web-sim.zip, and rebuild picodeck.net.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      web_sim_version: ${{ github.ref_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      HAVE_PAGES_HOOK: ${{ secrets.PAGES_DEPLOY_HOOK != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-sim
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/publish.sh "${{ github.ref_name }}"
+      - name: Rebuild picodeck.net
+        if: env.HAVE_PAGES_HOOK == 'true'
+        env:
+          PAGES_DEPLOY_HOOK: ${{ secrets.PAGES_DEPLOY_HOOK }}
+        run: curl -fsS -X POST "$PAGES_DEPLOY_HOOK" > /dev/null

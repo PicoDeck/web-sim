@@ -1,0 +1,86 @@
+# Builds and tests the web simulator against one PicoDeck ref, and uploads
+# picodeck-web-sim.zip as the `web-sim` artifact. Called by the other workflows.
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      picodeck_ref:
+        description: PicoDeck tag, branch or commit; empty = the latest release with the web build seam, else picodeck.pin
+        type: string
+        default: ''
+      web_sim_version:
+        description: The version recorded in version.json; empty = this commit
+        type: string
+        default: ''
+    outputs:
+      picodeck_ref:
+        description: The PicoDeck ref the build used
+        value: ${{ jobs.build.outputs.picodeck_ref }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      picodeck_ref: ${{ steps.ref.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the tools
+        run: npm ci
+
+      - name: Resolve the PicoDeck ref
+        id: ref
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/picodeck-ref.mjs "${{ inputs.picodeck_ref }}"
+
+      - name: Check out PicoDeck ${{ steps.ref.outputs.ref }}
+        uses: actions/checkout@v4
+        with:
+          repository: PicoDeck/picodeck
+          ref: ${{ steps.ref.outputs.ref }}
+          path: picodeck
+          submodules: recursive
+
+      - name: Cache Emscripten
+        uses: actions/cache@v4
+        with:
+          path: ~/emsdk
+          key: ${{ runner.os }}-emsdk-${{ hashFiles('scripts/emsdk.sh') }}
+
+      - name: Install Emscripten
+        run: scripts/emsdk.sh
+
+      - name: Install the test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Test build and browser tests
+        run: make test PICODECK=picodeck
+
+      - name: Release build and smoke tests (writes launcher.png)
+        run: make build smoke PICODECK=picodeck
+
+      - name: Package
+        env:
+          WEB_SIM_VERSION: ${{ inputs.web_sim_version }}
+          PICODECK_REF: ${{ steps.ref.outputs.ref }}
+        run: make package PICODECK=picodeck
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-sim
+          path: picodeck-web-sim.zip
+
+      - name: Keep the browser-test traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results
+          if-no-files-found: ignore

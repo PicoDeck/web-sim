@@ -1,0 +1,17 @@
+# Early warning: build and test against PicoDeck's develop every night.
+# PicoDeck's own CI no longer builds the web target, so this is what catches
+# a firmware change that breaks the browser build (for example a new
+# http_*/tcp_* function with no stub in platform/web_net_stubs.c) before it
+# reaches a release.
+name: nightly-develop
+
+on:
+  schedule:
+    - cron: '41 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      picodeck_ref: develop
