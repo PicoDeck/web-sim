@@ -41,4 +41,13 @@ test('the notes say what PicoDeck the release was built against, readably back',
   assert.match(notes, /^Built against PicoDeck v0\.5\.0 \(abcdef1\)\./);
   assert.match(notes, /- blockexe v1\.0\.3/);
   assert.equal(builtAgainst({ body: notes }), 'v0.5.0');
+  assert.doesNotMatch(notes, /Rebuilt for/);
+});
+
+test('a follow release says it was rebuilt for the new PicoDeck ref', () => {
+  const info = versionInfo({ webSim: 'v1.0.0', picodeck: { ref: 'v0.6.0', commit: 'abcdef1234' },
+    apps: APPS, builtinVersion: () => '1.2.0' });
+  const notes = releaseNotes(info, { rebuilt: true });
+  assert.match(notes, /^Built against PicoDeck v0\.6\.0 \(abcdef1\)\.\nRebuilt for PicoDeck v0\.6\.0\.\n/);
+  assert.equal(builtAgainst({ body: notes }), 'v0.6.0');
 });

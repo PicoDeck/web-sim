@@ -3,8 +3,13 @@
 // PicoDeck's latest release has the web build seam and web-sim's latest
 // release was built against an older one. Prints follow=, picodeck_ref= and
 // next= (the next patch version), and appends them to $GITHUB_OUTPUT in CI.
+//
+// An API or network failure must never read as "follow": resolveRef and the
+// web-sim release lookup are never wrapped in a catch-all here, so a lookup
+// error rejects shouldFollow() and the CLI exits 1 instead of publishing.
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { github, output, resolveRef } from './picodeck-ref.mjs';
+import { github, output, readPin, resolveRef } from './picodeck-ref.mjs';
 
 export const WEB_SIM_REPO = 'PicoDeck/web-sim';
 
@@ -20,9 +25,12 @@ export function builtAgainst(release) {
 }
 
 // resolved: resolveRef()'s result with no explicit ref; release: web-sim's
-// latest release (GitHub API object) or null.
+// latest release (GitHub API object) or null. Tells a real new release apart
+// from a fallback by resolved.source (never by parsing why): a resolveRef
+// lookup failure must reach here as a rejection, not as a "no seam" why text
+// that would compare equal to the fallback case.
 export function decide({ resolved, release }) {
-  if (!resolved.why.startsWith('latest release')) {
+  if (resolved.source !== 'release') {
     return { follow: false, why: `no PicoDeck release with the web build seam yet (${resolved.why})` };
   }
   if (!release) return { follow: false, why: 'web-sim has no release yet: publish v1.0.0 by hand' };
@@ -42,11 +50,20 @@ async function latestWebSimRelease() {
   return res.json();
 }
 
+// pin, latestTag, cmakeAt: resolveRef()'s inputs (no explicit ref: this is
+// always "what would CI build today"); latestRelease: web-sim's latest
+// release lookup, only consulted once resolveRef succeeds. No catch-all: any
+// rejection here propagates, uncaught.
+export async function shouldFollow({ pin, latestTag, cmakeAt, latestRelease }) {
+  const resolved = await resolveRef({ explicit: '', pin, latestTag, cmakeAt });
+  const release = await latestRelease();
+  return decide({ resolved, release });
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  Promise.all([resolveRef({ explicit: '', pin: '', ...github })
-    .catch((err) => ({ ref: '', why: err.message })), latestWebSimRelease()])
-    .then(([resolved, release]) => {
-      const d = decide({ resolved, release });
+  const pin = readPin(readFileSync(new URL('../picodeck.pin', import.meta.url), 'utf8'));
+  shouldFollow({ pin, latestTag: github.latestTag, cmakeAt: github.cmakeAt, latestRelease: latestWebSimRelease })
+    .then((d) => {
       console.error(`should-follow: ${d.why}`);
       output({ follow: d.follow, picodeck_ref: d.picodeck_ref ?? '', next: d.next ?? '' });
     })

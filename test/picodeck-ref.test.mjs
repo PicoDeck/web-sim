@@ -8,23 +8,27 @@ const repo = (tag, cmake) => ({ latestTag: async () => tag, cmakeAt: async () =>
 
 test('an explicit ref wins', async () => {
   assert.deepEqual(await resolveRef({ explicit: 'develop', pin: 'abc', ...repo('v0.5.0', WITH_SEAM) }),
-    { ref: 'develop', why: 'requested' });
+    { ref: 'develop', source: 'requested', why: 'requested' });
 });
 
 test('the latest release, when it has the web build seam', async () => {
   const r = await resolveRef({ explicit: '', pin: 'abc', ...repo('v0.5.0', WITH_SEAM) });
   assert.equal(r.ref, 'v0.5.0');
+  assert.equal(r.source, 'release');
   assert.match(r.why, /^latest release/);
 });
 
 test('the pin, while the latest release predates the seam', async () => {
   const r = await resolveRef({ explicit: '', pin: 'abc123', ...repo('v0.4.0', WITHOUT) });
   assert.equal(r.ref, 'abc123');
+  assert.equal(r.source, 'pin');
   assert.match(r.why, /v0\.4\.0, predates the web build seam/);
 });
 
 test('the pin, when PicoDeck has no release at all', async () => {
-  assert.equal((await resolveRef({ explicit: '', pin: 'abc123', ...repo(null, '') })).ref, 'abc123');
+  const r = await resolveRef({ explicit: '', pin: 'abc123', ...repo(null, '') });
+  assert.equal(r.ref, 'abc123');
+  assert.equal(r.source, 'pin');
 });
 
 test('no seam and no pin is an error, not a guess', async () => {

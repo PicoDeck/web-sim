@@ -11,13 +11,16 @@ export const REPO = 'PicoDeck/picodeck';
 export const SEAM = 'PICODECK_WEB_DIR';
 
 // latestTag() gives the latest release tag or null; cmakeAt(ref) gives that
-// ref's simulator/CMakeLists.txt.
+// ref's simulator/CMakeLists.txt. source is 'requested', 'release' or 'pin':
+// should-follow.mjs's decide() tells a real new release apart from a fallback
+// by source, never by parsing why.
 export async function resolveRef({ explicit, pin, latestTag, cmakeAt }) {
-  if (explicit) return { ref: explicit, why: 'requested' };
+  if (explicit) return { ref: explicit, source: 'requested', why: 'requested' };
   const tag = await latestTag();
-  if (tag && (await cmakeAt(tag)).includes(SEAM)) return { ref: tag, why: `latest release ${tag}` };
+  if (tag && (await cmakeAt(tag)).includes(SEAM)) return { ref: tag, source: 'release', why: `latest release ${tag}` };
   if (!pin) throw new Error(`the latest release (${tag ?? 'none'}) predates the web build seam and picodeck.pin is empty`);
-  return { ref: pin, why: `picodeck.pin (the latest release, ${tag ?? 'none'}, predates the web build seam)` };
+  return { ref: pin, source: 'pin',
+    why: `picodeck.pin (the latest release, ${tag ?? 'none'}, predates the web build seam)` };
 }
 
 // The first non-comment line of picodeck.pin.
@@ -54,6 +57,6 @@ export function output(pairs) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const pin = readPin(readFileSync(new URL('../picodeck.pin', import.meta.url), 'utf8'));
   resolveRef({ explicit: process.argv[2] || '', pin, ...github })
-    .then(output)
+    .then((r) => output({ ref: r.ref, source: r.source, why: r.why }))
     .catch((err) => { console.error(`picodeck-ref: ${err.message}`); process.exit(1); });
 }

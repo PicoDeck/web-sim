@@ -23,6 +23,8 @@ FIXTURE := $(CURDIR)/tests/fixtures/web_test
 define wasm
 	@test -x $(EMCMAKE) || { echo "Emscripten not found at $(EMSDK) (set EMSDK=...)"; exit 1; }
 	@test -f $(PICODECK)/simulator/CMakeLists.txt || { echo "No PicoDeck checkout at $(PICODECK) (set PICODECK=...)"; exit 1; }
+	@grep -q PICODECK_WEB_DIR $(PICODECK)/simulator/CMakeLists.txt || \
+		{ echo "$(PICODECK) predates the web build seam (no PICODECK_WEB_DIR in simulator/CMakeLists.txt): pick a ref with it"; exit 1; }
 	$(MAKE) -C $(PICODECK) download-lua
 	$(EMCMAKE) cmake -S $(PICODECK)/simulator -B $(1) -DCMAKE_BUILD_TYPE=Release \
 		-DPICODECK_WEB_DIR=$(CURDIR) -DWEB_SIM_EXTRA_APPS="$(2)"

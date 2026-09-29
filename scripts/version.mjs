@@ -1,6 +1,8 @@
 // What went into a web-sim build: version.json in the release zip, and the
 // release notes, whose "Built against PicoDeck <ref>" line
-// scripts/should-follow.mjs reads back.
+// scripts/should-follow.mjs reads back. A follow release (one
+// follow-picodeck.yml made for a new PicoDeck release) also says so in a
+// "Rebuilt for PicoDeck <ref>." line right after the "Built against" one.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -31,11 +33,15 @@ export function versionInfo({ webSim, picodeck, apps, builtinVersion }) {
   };
 }
 
-export function releaseNotes(info) {
+// { rebuilt: true } (a follow release) adds "Rebuilt for PicoDeck <ref>."
+// right after the "Built against" line, which stays first: builtAgainst()
+// and the "notes begin Built against PicoDeck" interface depend on it.
+export function releaseNotes(info, { rebuilt = false } = {}) {
   const apps = [...info.apps.builtin, ...info.apps.store]
     .map((a) => `- ${a.dir} ${a.version ?? ''}`.trimEnd());
   return [
     `Built against PicoDeck ${info.picodeck.ref} (${info.picodeck.commit.slice(0, 7)}).`,
+    ...(rebuilt ? [`Rebuilt for PicoDeck ${info.picodeck.ref}.`] : []),
     '',
     'Apps:',
     ...apps,
