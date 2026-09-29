@@ -1,0 +1,3 @@
+# The PicoDeck ref CI builds while no PicoDeck release has the web build
+# seam (scripts/picodeck-ref.mjs); must exist on PicoDeck/picodeck.
+develop

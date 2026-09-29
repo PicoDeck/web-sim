@@ -2,8 +2,12 @@
   "name": "picodeck-web-sim",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "fflate": "0.8.2",
     "pngjs": "7.0.0"
   }
 }

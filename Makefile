@@ -5,7 +5,9 @@
 #   make test      a test build in build-test/ (plus the fixture app) and the
 #                  browser tests against it
 #   make smoke     the release-build browser tests; writes build/launcher.png
+#   make package   picodeck-web-sim.zip from build/ (after make smoke)
 #   make serve     serve build/ at http://127.0.0.1:8765/picodeck_simulator.html
+#   make unit      the release scripts' unit tests
 SHELL := /bin/bash
 .SHELLFLAGS := -o pipefail -c
 
@@ -15,7 +17,7 @@ EMCMAKE := $(EMSDK)/upstream/emscripten/emcmake
 JOBS := $(shell nproc 2>/dev/null || echo 4)
 FIXTURE := $(CURDIR)/tests/fixtures/web_test
 
-.PHONY: build build-test test smoke serve clean
+.PHONY: build build-test test smoke package serve unit clean
 
 # $(call wasm,<build dir>,<extra app dirs>)
 define wasm
@@ -41,8 +43,14 @@ test: build-test
 smoke:
 	WEB_SIM_BUILD=build npx playwright test --grep @release
 
+package:
+	node scripts/package.mjs --build build --picodeck $(PICODECK) --out picodeck-web-sim.zip
+
 serve:
 	cd build && python3 -m http.server 8765 --bind 127.0.0.1
 
+unit:
+	node --test test/*.test.mjs
+
 clean:
-	rm -rf build build-test test-results playwright-report
+	rm -rf build build-test picodeck-web-sim.zip test-results playwright-report
