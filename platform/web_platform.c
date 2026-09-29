@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #include "hal/web_platform.h"
+#include "hal/hal_display.h"
 #include "sim_socket.h"  // sim_socket_notify* stubs below
 
 extern void hal_audio_update(void);
@@ -128,3 +129,9 @@ bool unicorn_run_app(const char *elf_path, const char *app_dir,
     printf("[WEB] Native app '%s' is not supported in the web demo\n", app_name);
     return false;
 }
+
+// ── The screen, for the browser tests ────────────────────────────────────────
+// The 320x320 RGB565 frame the display last showed (what the canvas shows),
+// read from Module.HEAPU16 by tests/web.spec.mjs: its launcher probe and the
+// release's launcher.png.
+EMSCRIPTEN_KEEPALIVE uint16_t *web_screen(void) { return hal_display_get_framebuffer(); }

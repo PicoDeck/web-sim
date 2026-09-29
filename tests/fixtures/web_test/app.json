@@ -1,0 +1,7 @@
+{
+  "id": "net.picodeck.webtest",
+  "name": "Web Test",
+  "description": "Browser-test fixture (test builds only)",
+  "version": "1.0.0",
+  "author": "PicoDeck"
+}

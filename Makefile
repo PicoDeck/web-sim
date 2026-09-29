@@ -2,6 +2,9 @@
 # scripts/emsdk.sh) and a PicoDeck checkout (PICODECK, default ../picodeck).
 #
 #   make build     the release page in build/ (apps.json's apps)
+#   make test      a test build in build-test/ (plus the fixture app) and the
+#                  browser tests against it
+#   make smoke     the release-build browser tests; writes build/launcher.png
 #   make serve     serve build/ at http://127.0.0.1:8765/picodeck_simulator.html
 SHELL := /bin/bash
 .SHELLFLAGS := -o pipefail -c
@@ -10,8 +13,9 @@ PICODECK ?= ../picodeck
 EMSDK ?= $(HOME)/emsdk
 EMCMAKE := $(EMSDK)/upstream/emscripten/emcmake
 JOBS := $(shell nproc 2>/dev/null || echo 4)
+FIXTURE := $(CURDIR)/tests/fixtures/web_test
 
-.PHONY: build serve clean
+.PHONY: build build-test test smoke serve clean
 
 # $(call wasm,<build dir>,<extra app dirs>)
 define wasm
@@ -28,8 +32,17 @@ endef
 build:
 	$(call wasm,build,)
 
+build-test:
+	$(call wasm,build-test,$(FIXTURE))
+
+test: build-test
+	WEB_SIM_BUILD=build-test npx playwright test
+
+smoke:
+	WEB_SIM_BUILD=build npx playwright test --grep @release
+
 serve:
 	cd build && python3 -m http.server 8765 --bind 127.0.0.1
 
 clean:
-	rm -rf build
+	rm -rf build build-test test-results playwright-report
