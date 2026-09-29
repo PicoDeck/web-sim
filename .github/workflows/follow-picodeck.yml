@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: follow-picodeck
@@ -48,6 +48,8 @@ jobs:
   release:
     needs: [check, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       HAVE_PAGES_HOOK: ${{ secrets.PAGES_DEPLOY_HOOK != '' }}
     steps:

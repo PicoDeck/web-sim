@@ -25,6 +25,8 @@ jobs:
       picodeck_ref: ${{ steps.ref.outputs.ref }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -47,6 +49,7 @@ jobs:
           ref: ${{ steps.ref.outputs.ref }}
           path: picodeck
           submodules: recursive
+          persist-credentials: false
 
       - name: Cache Emscripten
         uses: actions/cache@v4
