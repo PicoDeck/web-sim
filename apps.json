@@ -3,8 +3,8 @@
   "store": [
     {
       "dir": "blockexe",
-      "url": "https://github.com/PicoDeck/blockexe/releases/download/v1.0.3/picodeck-blockexe-v1.0.3.zip",
-      "sha256": "66cc0c9ebc251e704a78ecf540b94ca6bab2055bf66f96ea550319e9a8dbcac7"
+      "url": "https://github.com/PicoDeck/blockexe/releases/download/v1.0.5/picodeck-blockexe-v1.0.5.zip",
+      "sha256": "1d23e6fc87227a661b7bc01cc76577bd6306aa136119a9db9b30d13e6c53de1e"
     },
     {
       "dir": "brick15",
