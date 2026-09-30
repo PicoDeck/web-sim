@@ -45,7 +45,8 @@ jobs:
         id: ref
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/picodeck-ref.mjs "${{ inputs.picodeck_ref }}"
+          PICODECK_REF_INPUT: ${{ inputs.picodeck_ref }}
+        run: node scripts/picodeck-ref.mjs "$PICODECK_REF_INPUT"
 
       - name: Check out PicoDeck ${{ steps.ref.outputs.ref }}
         uses: actions/checkout@v4
