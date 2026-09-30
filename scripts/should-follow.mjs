@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 // Whether web-sim should publish a release for a new PicoDeck release: when
 // PicoDeck's latest release has the web build seam and web-sim's latest
-// release was built against an older one. Prints follow=, picodeck_ref= and
-// next= (the next patch version), and appends them to $GITHUB_OUTPUT in CI.
+// release was built against an older one. Prints follow=, picodeck_ref=,
+// next= (the next patch version) and web_sim_ref= (web-sim's latest release
+// tag: a follow release rebuilds that release's commit, never unreleased work
+// on main), and appends them to $GITHUB_OUTPUT in CI. All but follow are
+// empty when it is false.
 //
 // An API or network failure must never read as "follow": resolveRef and the
 // web-sim release lookup are never wrapped in a catch-all here, so a lookup
@@ -38,7 +41,14 @@ export function decide({ resolved, release }) {
     return { follow: false, why: `${release.tag_name} is already built against ${resolved.ref}` };
   }
   return { follow: true, picodeck_ref: resolved.ref, next: bumpPatch(release.tag_name),
+    web_sim_ref: release.tag_name,
     why: `${release.tag_name} was built against ${builtAgainst(release)}; PicoDeck released ${resolved.ref}` };
+}
+
+// The CLI's outputs for a decision: every key present, empty when unset.
+export function outputsOf(d) {
+  return { follow: d.follow, picodeck_ref: d.picodeck_ref ?? '', next: d.next ?? '',
+    web_sim_ref: d.web_sim_ref ?? '' };
 }
 
 async function latestWebSimRelease() {
@@ -65,7 +75,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   shouldFollow({ pin, latestTag: github.latestTag, cmakeAt: github.cmakeAt, latestRelease: latestWebSimRelease })
     .then((d) => {
       console.error(`should-follow: ${d.why}`);
-      output({ follow: d.follow, picodeck_ref: d.picodeck_ref ?? '', next: d.next ?? '' });
+      output(outputsOf(d));
     })
     .catch((err) => { console.error(`should-follow: ${err.message}`); process.exit(1); });
 }

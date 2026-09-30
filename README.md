@@ -42,9 +42,13 @@ or `PICODECK=...`).
 - Push a `vX.Y.Z` tag: CI builds against PicoDeck's latest release, runs the
   tests and publishes `picodeck-web-sim.zip` (with `version.json`: this
   version, the PicoDeck ref and commit, the apps and their versions).
-- When PicoDeck releases, `follow-picodeck.yml` rebuilds against it and, if the
-  tests pass, publishes the next patch version. PicoDeck's release workflow
-  sends `picodeck-release` when its `WEB_SIM_DISPATCH_TOKEN` secret is set; a
-  daily check covers it otherwise.
+- When PicoDeck releases, `follow-picodeck.yml` rebuilds the latest web-sim
+  release's commit against it and, if the tests pass, publishes that as the
+  next patch version, tagged on the same commit. A follow release never ships
+  unreleased work from `main`: if PicoDeck's change needs web-sim work that
+  isn't released yet, the follow run fails and you release by hand (push the
+  next `vX.Y.Z` tag). PicoDeck's release workflow sends `picodeck-release` when
+  its `WEB_SIM_DISPATCH_TOKEN` secret is set; a daily check covers it
+  otherwise.
 - `nightly-develop.yml` builds and tests against PicoDeck's develop every night.
 - A release rebuilds picodeck.net when the `PAGES_DEPLOY_HOOK` secret is set.

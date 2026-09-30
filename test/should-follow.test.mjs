@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bumpPatch, decide, shouldFollow } from '../scripts/should-follow.mjs';
+import { bumpPatch, decide, outputsOf, shouldFollow } from '../scripts/should-follow.mjs';
 
 const WITH_SEAM = 'if(EMSCRIPTEN)\n  include(${PICODECK_WEB_DIR}/web.cmake)\n';
 const WITHOUT = 'if(EMSCRIPTEN)\n  set(SIM_PLATFORM_SOURCES web/web_platform.c)\n';
@@ -8,10 +8,17 @@ const WITHOUT = 'if(EMSCRIPTEN)\n  set(SIM_PLATFORM_SOURCES web/web_platform.c)\
 const latest = (tag) => ({ ref: tag, source: 'release', why: `latest release ${tag}` });
 const release = (tag, built) => ({ tag_name: tag, body: `Built against PicoDeck ${built} (abcdef1).\n` });
 
-test('a newer PicoDeck release means the next patch release', () => {
+test('a newer PicoDeck release rebuilds the latest web-sim release as the next patch release', () => {
   assert.deepEqual(
     { ...decide({ resolved: latest('v0.6.0'), release: release('v1.2.3', 'v0.5.0') }), why: undefined },
-    { follow: true, picodeck_ref: 'v0.6.0', next: 'v1.2.4', why: undefined });
+    { follow: true, picodeck_ref: 'v0.6.0', next: 'v1.2.4', web_sim_ref: 'v1.2.3', why: undefined });
+});
+
+test('the outputs name the web-sim release to rebuild, and are all empty when not following', () => {
+  assert.deepEqual(outputsOf(decide({ resolved: latest('v0.6.0'), release: release('v1.2.3', 'v0.5.0') })),
+    { follow: true, picodeck_ref: 'v0.6.0', next: 'v1.2.4', web_sim_ref: 'v1.2.3' });
+  assert.deepEqual(outputsOf(decide({ resolved: latest('v0.5.0'), release: release('v1.2.3', 'v0.5.0') })),
+    { follow: false, picodeck_ref: '', next: '', web_sim_ref: '' });
 });
 
 test('nothing to do when the latest web-sim release is built against it', () => {
@@ -60,7 +67,8 @@ test('shouldFollow follows when PicoDeck released a newer seam build', async () 
     cmakeAt: async () => WITH_SEAM,
     latestRelease: async () => release('v1.2.3', 'v0.5.0'),
   });
-  assert.deepEqual({ ...d, why: undefined }, { follow: true, picodeck_ref: 'v0.6.0', next: 'v1.2.4', why: undefined });
+  assert.deepEqual({ ...d, why: undefined },
+    { follow: true, picodeck_ref: 'v0.6.0', next: 'v1.2.4', web_sim_ref: 'v1.2.3', why: undefined });
 });
 
 test('shouldFollow does not follow while the latest release predates the seam', async () => {

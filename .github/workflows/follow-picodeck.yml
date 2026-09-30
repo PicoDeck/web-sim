@@ -1,6 +1,7 @@
 # Follows PicoDeck's releases: when PicoDeck publishes one (its release.yml
-# sends `picodeck-release`, or the daily check finds it), build and test
-# against it and, if everything passes, publish the next patch release. A
+# sends `picodeck-release`, or the daily check finds it), rebuild web-sim's
+# latest release (its tag's commit, never unreleased work on main) against it,
+# test it and, if everything passes, publish it as the next patch release. A
 # failure publishes nothing: picodeck.net keeps the previous demo.
 name: follow-picodeck
 
@@ -24,6 +25,7 @@ jobs:
       follow: ${{ steps.decide.outputs.follow }}
       picodeck_ref: ${{ steps.decide.outputs.picodeck_ref }}
       next: ${{ steps.decide.outputs.next }}
+      web_sim_ref: ${{ steps.decide.outputs.web_sim_ref }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,6 +46,7 @@ jobs:
     with:
       picodeck_ref: ${{ needs.check.outputs.picodeck_ref }}
       web_sim_version: ${{ needs.check.outputs.next }}
+      web_sim_ref: ${{ needs.check.outputs.web_sim_ref }}
 
   release:
     needs: [check, build]
@@ -53,7 +56,10 @@ jobs:
     env:
       HAVE_PAGES_HOOK: ${{ secrets.PAGES_DEPLOY_HOOK != '' }}
     steps:
+      # The web-sim release the build rebuilt: its commit is the new tag's target.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.web_sim_ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -65,7 +71,7 @@ jobs:
       - name: Publish ${{ needs.check.outputs.next }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/publish.sh "${{ needs.check.outputs.next }}" "${{ github.sha }}"
+        run: scripts/publish.sh "${{ needs.check.outputs.next }}" "$(git rev-parse HEAD)"
       - name: Rebuild picodeck.net
         if: env.HAVE_PAGES_HOOK == 'true'
         env:

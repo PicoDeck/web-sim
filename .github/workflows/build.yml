@@ -13,6 +13,10 @@ on:
         description: The version recorded in version.json; empty = this commit
         type: string
         default: ''
+      web_sim_ref:
+        description: The web-sim tag or commit to build; empty = the commit that triggered the run
+        type: string
+        default: ''
     outputs:
       picodeck_ref:
         description: The PicoDeck ref the build used
@@ -26,6 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.web_sim_ref }}
           persist-credentials: false
 
       - uses: actions/setup-node@v4
