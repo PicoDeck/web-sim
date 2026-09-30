@@ -78,9 +78,23 @@ function(picodeck_web_package target)
         web_sim_copy_app(${app})
     endforeach()
 
+    # web_sd/ is rebuilt at every configure, but only the link packs it into
+    # picodeck_simulator.data. The link depends on a stamp of its content
+    # (each file's SHA-256 and path), which file(CONFIGURE) rewrites only when
+    # that changes: a changed app relinks, an unchanged configure does not.
+    file(GLOB_RECURSE sd_files LIST_DIRECTORIES false RELATIVE ${WEB_SD_DIR} ${WEB_SD_DIR}/*)
+    list(SORT sd_files)
+    set(WEB_SD_STAMP "")
+    foreach(f ${sd_files})
+        file(SHA256 ${WEB_SD_DIR}/${f} sd_sha)
+        string(APPEND WEB_SD_STAMP "${sd_sha}  ${f}\n")
+    endforeach()
+    set(sd_stamp ${CMAKE_BINARY_DIR}/web_sd.stamp)
+    file(CONFIGURE OUTPUT ${sd_stamp} CONTENT "@WEB_SD_STAMP@" @ONLY)
+
     set_target_properties(${target} PROPERTIES
         SUFFIX ".html"
-        LINK_DEPENDS ${PICODECK_WEB_DIR}/page/shell.html)
+        LINK_DEPENDS "${PICODECK_WEB_DIR}/page/shell.html;${sd_stamp}")
     # The page glue shell.html loads (and picodeck.net/try/ loads from the zip).
     configure_file(${PICODECK_WEB_DIR}/page/shell.js ${CMAKE_BINARY_DIR}/shell.js COPYONLY)
     target_link_options(${target} PRIVATE
