@@ -13,6 +13,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:8766',
     viewport: { width: 1280, height: 900 },
+    // A failed CI run uploads test-results/ as playwright-results: keep these.
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: {

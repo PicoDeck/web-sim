@@ -11,6 +11,10 @@ const BUILD = process.env.WEB_SIM_BUILD || 'build-test';
 const APPS = JSON.parse(readFileSync(new URL('../apps.json', import.meta.url), 'utf8'));
 const ALL_APPS = [...APPS.builtin, ...APPS.store.map((a) => a.dir)];
 const FIXTURE_DATA = '/sd/data/net.picodeck.webtest';
+// PicoDeck's launcher writes /system/running.txt when it starts an app and
+// deletes it when the app returns (RUNNING_PATH in PicoDeck's
+// src/os/crashlog.c): here, on the SD image mounted at /sd.
+const RUNNING = '/sd/system/running.txt';
 
 // Runs in the page: the screen as the display shows it (320x320 RGB565).
 function screenOf() {
@@ -28,6 +32,10 @@ function launcherShown() {
 
 function fileText(path) {
   try { return FS.readFile(path, { encoding: 'utf8' }); } catch (e) { return null; }
+}
+
+function fileExists(path) {
+  try { FS.stat(path); return true; } catch (e) { return false; }
 }
 
 async function boot(page, query = '') {
@@ -61,8 +69,11 @@ test('boots to the launcher and captures it @release', async ({ page }) => {
 for (const app of ALL_APPS) {
   test(`${app} starts without a Lua error @release`, async ({ page }) => {
     const errors = await boot(page, `?app=${app}`);
-    // Give the app time to load and draw; the launcher must not come back.
-    await page.waitForTimeout(4000);
+    // Wait until the launcher has started the app, then give it time to load
+    // and draw: it must still be running, and the launcher must not be back.
+    await page.waitForFunction(fileExists, RUNNING, { timeout: 30_000 });
+    await page.waitForTimeout(2000);
+    expect(await page.evaluate(fileExists, RUNNING)).toBe(true);
     expect(await page.evaluate(fileText, '/sd/system/error.log')).toBeNull();
     expect(await page.evaluate(launcherShown)).toBe(false);
     expect(distinctColours(await page.evaluate(screenOf))).toBeGreaterThan(1);
