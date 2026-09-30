@@ -2,10 +2,11 @@
 
 The browser demo at [picodeck.net/try](https://picodeck.net/try/): PicoDeck's
 simulator compiled to WebAssembly with Emscripten, running Lua apps in a page.
-It is built from PicoDeck's own source, the latest
-[PicoDeck release](https://github.com/PicoDeck/picodeck/releases), and releases
-on its own schedule; picodeck.net takes `picodeck-web-sim.zip` from this repo's
-latest release.
+It is built from PicoDeck's own source: the latest
+[PicoDeck release](https://github.com/PicoDeck/picodeck/releases) that has the
+web build seam or, while no release has it, the PicoDeck ref in
+`picodeck.pin`. It releases on its own schedule; picodeck.net takes
+`picodeck-web-sim.zip` from this repo's latest release.
 
 ## What lives here
 
@@ -39,9 +40,10 @@ or `PICODECK=...`).
 
 ## Releases
 
-- Push a `vX.Y.Z` tag: CI builds against PicoDeck's latest release, runs the
-  tests and publishes `picodeck-web-sim.zip` (with `version.json`: this
-  version, the PicoDeck ref and commit, the apps and their versions).
+- Push a `vX.Y.Z` tag: CI builds against PicoDeck's latest release with the
+  web build seam (else `picodeck.pin`), runs the tests and publishes
+  `picodeck-web-sim.zip` (with `version.json`: this version, the PicoDeck ref
+  and commit, the apps and their versions).
 - When PicoDeck releases, `follow-picodeck.yml` rebuilds the latest web-sim
   release's commit against it and, if the tests pass, publishes that as the
   next patch version, tagged on the same commit. A follow release never ships
