@@ -4,6 +4,7 @@
 set -euo pipefail
 EMSDK_VERSION=6.0.10
 EMSDK="${EMSDK:-$HOME/emsdk}"
-[ -x "$EMSDK/emsdk" ] || git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$EMSDK"
+[ -x "$EMSDK/emsdk" ] ||
+  git clone --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk.git "$EMSDK"
 "$EMSDK/emsdk" install "$EMSDK_VERSION"
 "$EMSDK/emsdk" activate "$EMSDK_VERSION"
