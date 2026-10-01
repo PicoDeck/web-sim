@@ -45,15 +45,16 @@ or `PICODECK=...`).
   `picodeck-web-sim.zip` (with `version.json`: this version, the PicoDeck ref
   and commit, the apps and their versions).
 - Or release by hand against a chosen PicoDeck ref: run `release` from the
-  Actions tab, on `main`, with `version` (a `vX.Y.Z` greater than the latest
-  release, whose tag doesn't exist yet: both are checked before the build,
-  and the tag is created on the commit the run starts from) and
-  `picodeck_ref` (a PicoDeck tag, branch or commit; empty = the usual ref).
-  Use it when a PicoDeck release breaks the web build in a way only PicoDeck
-  can fix and web-sim still needs to release (build against the previous
-  PicoDeck release or a fixed commit), or to put a PicoDeck develop commit on
-  the demo early. The notes record that ref, and the release stays up until
-  PicoDeck publishes its next release, which the follow (below) picks up.
+  Actions tab on `main` (a run on another branch is refused) with `version` (a
+  `vX.Y.Z` greater than the latest release, whose tag doesn't exist yet: both
+  are checked before the build, and the tag is created on the commit the run
+  starts from) and `picodeck_ref` (a PicoDeck tag, branch or commit; empty =
+  the usual ref). Use it when a PicoDeck release breaks the web build in a way
+  only PicoDeck can fix and web-sim still needs to release (build against the
+  previous PicoDeck release or a fixed commit), or to put a PicoDeck develop
+  commit on the demo early. The notes record that ref, and the release stays
+  up until PicoDeck publishes its next release, which the follow (below) picks
+  up.
 - When PicoDeck releases, `follow-picodeck.yml` rebuilds the latest web-sim
   release's commit against it and, if the tests pass, publishes that as the
   next patch version, tagged on the same commit. It follows a PicoDeck release

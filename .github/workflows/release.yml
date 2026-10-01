@@ -1,12 +1,13 @@
 # A pushed vX.Y.Z tag: build and test against the latest PicoDeck release,
 # publish picodeck-web-sim.zip, and rebuild picodeck.net.
 #
-# Run by hand (Actions > release > Run workflow) to release against a chosen
-# PicoDeck ref: `version` is the new vX.Y.Z, greater than web-sim's latest
-# release (its tag must not exist yet: publish.sh creates it on the commit
-# the run was dispatched from; both are checked before the build) and
-# `picodeck_ref` a PicoDeck tag, branch or commit (empty = the usual
-# resolution: the latest release with the web build seam, else picodeck.pin).
+# Run by hand (Actions > release > Run workflow), on main only (a run on
+# another branch is refused), to release against a chosen PicoDeck ref:
+# `version` is the new vX.Y.Z, greater than web-sim's latest release (its
+# tag must not exist yet: publish.sh creates it on the commit the run was
+# dispatched from; both are checked before the build) and `picodeck_ref` a
+# PicoDeck tag, branch or commit (empty = the usual resolution: the latest
+# release with the web build seam, else picodeck.pin).
 name: release
 
 on:
@@ -44,6 +45,16 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: echo "version=$TAG" >> "$GITHUB_OUTPUT"
+      # A manual release tags the commit it runs on: only main's.
+      - name: Check the run is on main
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != refs/heads/main ]; then
+            echo "::error::a manual release runs only on main, not $REF: choose main under \"Use workflow from\""
+            exit 1
+          fi
       - uses: actions/checkout@v4
         if: github.event_name == 'workflow_dispatch'
         with:
