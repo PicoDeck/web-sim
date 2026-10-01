@@ -33,7 +33,7 @@ or `PICODECK=...`).
     npm ci && npx playwright install chromium
     make build      # build/: the release page
     make serve      # http://127.0.0.1:8765/picodeck_simulator.html
-    make test       # build-test/ (with tests/fixtures/web_test) + browser tests
+    make test       # build-test/ (with tests/fixtures/*) + browser tests
     make smoke      # the @release browser tests on build/; writes build/launcher.png
     make package    # picodeck-web-sim.zip (after make smoke)
     make unit       # the scripts' unit tests

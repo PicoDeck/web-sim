@@ -11,7 +11,7 @@ endif()
 set(PICODECK_WEB_PLATFORM_SOURCES ${PICODECK_WEB_DIR}/platform/web_platform.c)
 set(PICODECK_WEB_NET_SOURCES ${PICODECK_WEB_DIR}/platform/web_net_stubs.c)
 
-# Test builds add the browser tests' fixture app here (absolute app dirs);
+# Test builds add the browser tests' fixture apps here (absolute app dirs);
 # releases leave it empty.
 set(WEB_SIM_EXTRA_APPS "" CACHE STRING "Extra app directories to bundle (test builds)")
 

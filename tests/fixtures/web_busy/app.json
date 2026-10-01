@@ -1,0 +1,7 @@
+{
+  "id": "net.picodeck.webbusy",
+  "name": "Web Busy",
+  "description": "Browser-test fixture: a Lua loop that never yields (test builds only)",
+  "version": "1.0.0",
+  "author": "PicoDeck"
+}
