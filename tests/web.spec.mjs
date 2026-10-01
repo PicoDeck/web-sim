@@ -25,14 +25,6 @@ function screenOf() {
   return Array.from(Module.HEAPU16.subarray(base, base + 320 * 320));
 }
 
-// The launcher's selection bar (launcher.c C_SEL_BG, RGB565 0x2A94) inside
-// row 0: on screen once the launcher list is drawn with its first app selected.
-function launcherShown() {
-  if (typeof Module === 'undefined' || !Module._web_screen || !Module.HEAPU16) return false;
-  const px = Module.HEAPU16[(Module._web_screen() >> 1) + 57 * 320 + 200];
-  return px === 0x2a94 || px === 0x942a;
-}
-
 function fileText(path) {
   try { return FS.readFile(path, { encoding: 'utf8' }); } catch (e) { return null; }
 }
@@ -41,20 +33,46 @@ function fileExists(path) {
   try { FS.stat(path); return true; } catch (e) { return false; }
 }
 
+// The screen as the display shows it isn't blank: more than 8 distinct
+// colours. Self-contained (no outside references) so it can run as a
+// page.waitForFunction predicate.
+function screenNotBlank() {
+  if (typeof Module === 'undefined' || !Module._web_screen || !Module.HEAPU16) return false;
+  const base = Module._web_screen() >> 1;
+  return new Set(Module.HEAPU16.subarray(base, base + 320 * 320)).size > 8;
+}
+
+// The launcher logs this once it has scanned /apps (src/os/launcher.c,
+// printf("[LAUNCHER] Found %d apps")), whether or not it then auto-launches
+// an app: page/shell.js routes stdout to console.log.
+const LAUNCHER_FOUND_RE = /\[LAUNCHER\] Found \d+ apps/;
+
+// The launcher has started: its boot line reached the console and the
+// screen has drawn something. No pixel-colour dependency, so a launcher
+// restyle can't break this the way reading a specific selection-bar colour
+// could.
+async function waitForLauncher(page, consoleLines, timeout = 30_000) {
+  await page.waitForFunction(screenNotBlank, null, { timeout });
+  await expect.poll(() => consoleLines.some((l) => LAUNCHER_FOUND_RE.test(l)),
+    { timeout: 5000, message: 'the "[LAUNCHER] Found N apps" console line never arrived' }).toBe(true);
+}
+
 async function boot(page, query = '') {
   const errors = [];
+  const consoleLines = [];
   page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('console', (msg) => consoleLines.push(msg.text()));
   await page.goto(PAGE + query);
   await page.waitForFunction(() => typeof Module !== 'undefined'
     && typeof Module._web_screen === 'function' && Module.HEAPU16, null, { timeout: 30_000 });
-  return errors;
+  return { errors, consoleLines };
 }
 
 const distinctColours = (pixels) => new Set(pixels).size;
 
 test('boots to the launcher and captures it @release', async ({ page }) => {
-  const errors = await boot(page);
-  await page.waitForFunction(launcherShown, null, { timeout: 30_000 });
+  const { errors, consoleLines } = await boot(page);
+  await waitForLauncher(page, consoleLines);
   const pixels = await page.evaluate(screenOf);
   expect(distinctColours(pixels)).toBeGreaterThan(8);
   expect(errors).toEqual([]);
@@ -71,14 +89,14 @@ test('boots to the launcher and captures it @release', async ({ page }) => {
 
 for (const app of ALL_APPS) {
   test(`${app} starts without a Lua error @release`, async ({ page }) => {
-    const errors = await boot(page, `?app=${app}`);
+    const { errors } = await boot(page, `?app=${app}`);
     // Wait until the launcher has started the app, then give it time to load
-    // and draw: it must still be running, and the launcher must not be back.
+    // and draw: it must still be running (running.txt is gone once the
+    // launcher is back, so this doesn't depend on any screen pixel).
     await page.waitForFunction(fileExists, RUNNING, { timeout: 30_000 });
     await page.waitForTimeout(2000);
     expect(await page.evaluate(fileExists, RUNNING)).toBe(true);
     expect(await page.evaluate(fileText, '/sd/system/error.log')).toBeNull();
-    expect(await page.evaluate(launcherShown)).toBe(false);
     expect(distinctColours(await page.evaluate(screenOf))).toBeGreaterThan(1);
     expect(errors).toEqual([]);
   });
@@ -93,8 +111,8 @@ test('a release build carries no test fixture @release', async ({ page }) => {
 });
 
 test('an unknown ?app= boots to the launcher @release', async ({ page }) => {
-  const errors = await boot(page, '?app=no-such-app');
-  await page.waitForFunction(launcherShown, null, { timeout: 30_000 });
+  const { errors, consoleLines } = await boot(page, '?app=no-such-app');
+  await waitForLauncher(page, consoleLines);
   expect(errors).toEqual([]);
 });
 
@@ -102,8 +120,8 @@ test('the page still runs without IndexedDB (saves stay in memory) @release', as
   await page.addInitScript(() => {
     Object.defineProperty(window, 'indexedDB', { get: () => undefined, configurable: true });
   });
-  const errors = await boot(page);
-  await page.waitForFunction(launcherShown, null, { timeout: 30_000 });
+  const { errors, consoleLines } = await boot(page);
+  await waitForLauncher(page, consoleLines);
   expect(errors).toEqual([]);
 });
 
@@ -137,7 +155,7 @@ test.describe('with the fixture apps', () => {
   // web_busy spins in a pure Lua loop (no sleep, flush or input poll): the
   // tab must still get its event loop back, or the page freezes for good.
   test('a Lua loop that never yields leaves the page responsive', async ({ page }) => {
-    const errors = await boot(page, '?app=web_busy');
+    const { errors } = await boot(page, '?app=web_busy');
     await page.waitForFunction(fileExists, `${BUSY_DATA}/started.txt`, { timeout: 30_000 });
     // Wait in the test, not with page.waitForTimeout: on a frozen page every
     // page call hangs (the trace snapshots the page after each one). The
