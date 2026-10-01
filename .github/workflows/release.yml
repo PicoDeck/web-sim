@@ -2,8 +2,9 @@
 # publish picodeck-web-sim.zip, and rebuild picodeck.net.
 #
 # Run by hand (Actions > release > Run workflow) to release against a chosen
-# PicoDeck ref: `version` is the new vX.Y.Z (its tag must not exist yet:
-# publish.sh creates it on the commit the run was dispatched from) and
+# PicoDeck ref: `version` is the new vX.Y.Z, greater than web-sim's latest
+# release (its tag must not exist yet: publish.sh creates it on the commit
+# the run was dispatched from; both are checked before the build) and
 # `picodeck_ref` a PicoDeck tag, branch or commit (empty = the usual
 # resolution: the latest release with the web build seam, else picodeck.pin).
 name: release
@@ -27,26 +28,37 @@ permissions:
   contents: read
 
 jobs:
-  # The version being released: the pushed tag, or a manual run's input,
-  # checked before the build so a mistyped version fails in seconds.
+  # The version being released: the pushed tag as it is, or a manual run's
+  # input, checked before the build so a mistake fails in seconds:
+  # scripts/release-version.mjs refuses a version that isn't vX.Y.Z, whose
+  # tag already exists, or that isn't greater than web-sim's latest release
+  # (read-only lookups with this job's contents: read token).
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.check.outputs.version }}
+      version: ${{ steps.pushed.outputs.version || steps.manual.outputs.version }}
     steps:
-      - name: Check the version
-        id: check
+      - name: The pushed tag
+        id: pushed
+        if: github.event_name == 'push'
         env:
-          EVENT: ${{ github.event_name }}
-          INPUT_VERSION: ${{ inputs.version }}
           TAG: ${{ github.ref_name }}
-        run: |
-          if [ "$EVENT" = workflow_dispatch ]; then version="$INPUT_VERSION"; else version="$TAG"; fi
-          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::version '$version' is not vX.Y.Z (for example v1.2.0)"
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: echo "version=$TAG" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          node-version: 22
+      - name: Check the version
+        id: manual
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: node scripts/release-version.mjs "$VERSION"
 
   build:
     needs: version

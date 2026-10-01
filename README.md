@@ -45,8 +45,9 @@ or `PICODECK=...`).
   `picodeck-web-sim.zip` (with `version.json`: this version, the PicoDeck ref
   and commit, the apps and their versions).
 - Or release by hand against a chosen PicoDeck ref: run `release` from the
-  Actions tab, on `main`, with `version` (the next `vX.Y.Z`; its tag must not
-  exist yet, and is created on the commit the run starts from) and
+  Actions tab, on `main`, with `version` (a `vX.Y.Z` greater than the latest
+  release, whose tag doesn't exist yet: both are checked before the build,
+  and the tag is created on the commit the run starts from) and
   `picodeck_ref` (a PicoDeck tag, branch or commit; empty = the usual ref).
   Use it when a PicoDeck release breaks the web build in a way only PicoDeck
   can fix and web-sim still needs to release (build against the previous
