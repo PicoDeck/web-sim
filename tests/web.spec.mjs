@@ -53,6 +53,10 @@ function screenNotBlank() {
 // printf("[LAUNCHER] Found %d apps")), whether or not it then auto-launches
 // an app: page/shell.js routes stdout to console.log.
 const LAUNCHER_FOUND_RE = /\[LAUNCHER\] Found \d+ apps/;
+// What the launcher prints when ?app= (--launch) names no app it has, after
+// "[LAUNCHER] Found N apps" and before it draws the launcher
+// (src/os/launcher.c, launcher_run): "[LAUNCHER] Failed to auto-launch: <app>".
+const autoLaunchFailed = (app) => `[LAUNCHER] Failed to auto-launch: ${app}`;
 // What a Lua error prints to the console too (src/os/crashlog.c's
 // crashlog_write, always called by lua_bridge_show_error / a launch
 // failure): "[LUA ERROR] <app>: <context>: <message> (<heap>)".
@@ -143,8 +147,15 @@ test('a release build carries no test fixture @release', async ({ page }) => {
 });
 
 test('an unknown ?app= boots to the launcher @release', async ({ page }) => {
-  const { errors, consoleLines } = await boot(page, '?app=no-such-app');
+  const app = 'no-such-app';
+  const { errors, consoleLines } = await boot(page, `?app=${app}`);
   await waitForLauncher(page, consoleLines);
+  // "Found N apps" comes before the launch attempt, so on its own it doesn't
+  // show the page got back to the launcher: the attempt must have failed
+  // (not hung or started something) and no app may be running.
+  await expect.poll(() => consoleLines.includes(autoLaunchFailed(app)),
+    { timeout: 10_000, message: `the "${autoLaunchFailed(app)}" console line never arrived` }).toBe(true);
+  expect(await page.evaluate(fileExists, RUNNING), 'an app is running').toBe(false);
   expect(errors).toEqual([]);
 });
 
