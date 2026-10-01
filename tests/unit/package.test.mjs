@@ -44,12 +44,37 @@ test('a build with a test fixture app baked in is refused (it looks like a test 
   assert.throws(() => packageBuild({ build: dir, info: INFO }), /web_test/);
 });
 
+// A time `s` seconds from now, for utimesSync.
+const at = (s) => new Date(Date.now() + s * 1000);
+
 test('a launcher.png older than picodeck_simulator.data is refused (a stale screenshot)', () => {
   const dir = fakeBuild();
-  const old = new Date(Date.now() - 60_000);
-  utimesSync(join(dir, 'launcher.png'), old, old);
+  for (const file of Object.values(FILES)) utimesSync(join(dir, file), at(-120), at(-120));
+  utimesSync(join(dir, 'launcher.png'), at(-60), at(-60));
+  utimesSync(join(dir, 'picodeck_simulator.data'), at(-30), at(-30));
   assert.throws(() => packageBuild({ build: dir, info: INFO }),
-    /launcher\.png.*older than.*picodeck_simulator\.data/);
+    /launcher\.png is older than .*picodeck_simulator\.data: a stale screenshot/);
+});
+
+// A code-only relink rewrites the .js and .wasm but not the .data: the
+// screenshot is judged against whichever build output is newest.
+test('a launcher.png older than a relinked .js or .wasm is refused, even when newer than the .data', () => {
+  for (const relinked of ['picodeck_simulator.js', 'picodeck_simulator.wasm']) {
+    const dir = fakeBuild();
+    for (const file of Object.values(FILES)) utimesSync(join(dir, file), at(-120), at(-120));
+    utimesSync(join(dir, 'launcher.png'), at(-60), at(-60));  // after the .data ...
+    utimesSync(join(dir, relinked), at(-30), at(-30));        // ... before the relink
+    assert.throws(() => packageBuild({ build: dir, info: INFO }),
+      new RegExp(`launcher\\.png is older than .*${relinked.replace('.', '\\.')}: a stale screenshot`), relinked);
+  }
+});
+
+test('a launcher.png newer than all of the .js, .wasm and .data is packaged', () => {
+  const dir = fakeBuild();
+  for (const file of Object.values(FILES)) utimesSync(join(dir, file), at(-120), at(-120));
+  utimesSync(join(dir, 'picodeck_simulator.wasm'), at(-90), at(-90));
+  utimesSync(join(dir, 'launcher.png'), at(-60), at(-60));
+  assert.ok(packageBuild({ build: dir, info: INFO }).length > 0);
 });
 
 test('storeAppVersion reads a store app\'s own app.json from the build, or null', () => {

@@ -62,10 +62,14 @@ function refOf(dir) {
   }
 }
 
+// The build outputs a launcher.png must be newer than: a code-only relink
+// rewrites the .js and .wasm and leaves the .data alone.
+export const SCREENSHOT_OF = ['picodeck_simulator.js', 'picodeck_simulator.wasm', 'picodeck_simulator.data'];
+
 // The zip's entries: FILES from the build directory, plus version.json.
 // Refuses a build that looks like a test build, not a release one: a fixture
-// app baked into web_sd/apps/, or a launcher.png older than
-// picodeck_simulator.data (a stale screenshot from an earlier build).
+// app baked into web_sd/apps/, or a launcher.png older than the newest of
+// SCREENSHOT_OF (a stale screenshot from an earlier build).
 export function packageBuild({ build, info, fixtures = fixtureAppNames() }) {
   for (const name of fixtures) {
     const path = join(build, 'web_sd', 'apps', name);
@@ -83,10 +87,11 @@ export function packageBuild({ build, info, fixtures = fixtureAppNames() }) {
     }
     entries[name] = readFileSync(path);
   }
-  const dataPath = join(build, FILES['picodeck_simulator.data']);
   const pngPath = join(build, FILES['launcher.png']);
-  if (statSync(pngPath).mtimeMs < statSync(dataPath).mtimeMs) {
-    throw new Error(`${pngPath} is older than ${dataPath}: a stale screenshot from an earlier build `
+  const newest = SCREENSHOT_OF.map((file) => join(build, file))
+    .reduce((a, b) => (statSync(b).mtimeMs > statSync(a).mtimeMs ? b : a));
+  if (statSync(pngPath).mtimeMs < statSync(newest).mtimeMs) {
+    throw new Error(`${pngPath} is older than ${newest}: a stale screenshot from an earlier build `
       + '(run make smoke again)');
   }
   entries['version.json'] = strToU8(`${JSON.stringify(info, null, 2)}\n`);
