@@ -3,13 +3,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FILES, packageBuild } from '../../scripts/package.mjs';
 
-const PUBLISH = fileURLToPath(new URL('../../scripts/publish.sh', import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const SCRIPTS_DIR = join(REPO_ROOT, 'scripts');
 const INFO = { web_sim: 'v1.0.1', picodeck: { ref: 'v0.6.0', commit: 'abcdef1234' }, apps: { builtin: [], store: [] } };
 const TARGET = '0123456789abcdef0123456789abcdef01234567';
 
@@ -34,50 +35,64 @@ if (args[0] === 'release' && args[1] === 'create') process.exit(0);
 fail('fake gh: unexpected call ' + JSON.stringify(args));
 `;
 
-// A scratch directory holding picodeck-web-sim.zip (made as
-// test/package.test.mjs makes one) and the fake gh in bin/.
-function scratch() {
+// A scratch "repo root": picodeck-web-sim.zip, a scripts/ copy (publish.sh
+// resolves its own path, so it must find the zip as a sibling of a real
+// scripts/ dir, not rely on cwd), a node_modules symlink (so the copied
+// notes.mjs can still resolve fflate) and the fake gh in bin/.
+function scratch(info = INFO) {
   const dir = mkdtempSync(join(tmpdir(), 'publish-'));
   const build = join(dir, 'build');
-  spawnSync('mkdir', ['-p', build, join(dir, 'bin')]);
+  const scriptsDir = join(dir, 'scripts');
+  mkdirSync(build, { recursive: true });
+  mkdirSync(scriptsDir, { recursive: true });
+  mkdirSync(join(dir, 'bin'), { recursive: true });
   for (const file of Object.values(FILES)) writeFileSync(join(build, file), file);
-  writeFileSync(join(dir, 'picodeck-web-sim.zip'), packageBuild({ build, info: INFO }));
+  writeFileSync(join(dir, 'picodeck-web-sim.zip'), packageBuild({ build, info }));
+  for (const name of ['publish.sh', 'notes.mjs', 'version.mjs']) {
+    writeFileSync(join(scriptsDir, name), readFileSync(join(SCRIPTS_DIR, name)));
+  }
+  chmodSync(join(scriptsDir, 'publish.sh'), 0o755);
+  symlinkSync(join(REPO_ROOT, 'node_modules'), join(dir, 'node_modules'));
   writeFileSync(join(dir, 'bin', 'gh'), FAKE_GH);
   chmodSync(join(dir, 'bin', 'gh'), 0o755);
   return dir;
 }
 
-function publish(state, ...args) {
-  const dir = scratch();
+// cwd defaults to the scratch root (as a pushed-tag CI run would see it); pass
+// one elsewhere to prove publish.sh does not depend on it. info overrides the
+// zip's version.json (for the version-mismatch test).
+function publish(state, args, { cwd, info } = {}) {
+  const dir = scratch(info);
   const log = join(dir, 'gh.log');
-  const r = spawnSync('bash', [PUBLISH, ...args], {
-    cwd: dir,
+  const zip = join(dir, 'picodeck-web-sim.zip');
+  const r = spawnSync('bash', [join(dir, 'scripts', 'publish.sh'), ...args], {
+    cwd: cwd ?? dir,
     encoding: 'utf8',
     env: { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, FAKE_GH: state, FAKE_GH_LOG: log },
   });
   const calls = existsSync(log)
     ? readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : [];
-  return { status: r.status, stderr: r.stderr, calls };
+  return { status: r.status, stderr: r.stderr, calls, zip };
 }
 
 const creates = (calls) => calls.filter((c) => c[0] === 'release' && c[1] === 'create');
 
 test('no tag: prints the usage and calls nothing', () => {
-  const r = publish('fresh');
+  const r = publish('fresh', []);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /usage: scripts\/publish\.sh <tag> \[<target commit>\]/);
   assert.deepEqual(r.calls, []);
 });
 
 test('an existing release is never overwritten', () => {
-  const r = publish('release', 'v1.0.1');
+  const r = publish('release', ['v1.0.1']);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /release v1\.0\.1 already exists/);
   assert.deepEqual(creates(r.calls), []);
 });
 
 test('with a target, an existing tag is refused (gh would ignore --target)', () => {
-  const r = publish('tag', 'v1.0.1', TARGET);
+  const r = publish('tag', ['v1.0.1', TARGET]);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /tag v1\.0\.1 already exists/);
   assert.deepEqual(creates(r.calls), []);
@@ -85,7 +100,7 @@ test('with a target, an existing tag is refused (gh would ignore --target)', () 
 
 test('a lookup that fails for another reason publishes nothing', () => {
   for (const args of [['v1.0.1'], ['v1.0.1', TARGET]]) {
-    const r = publish('error', ...args);
+    const r = publish('error', args);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /HTTP 503/);
     assert.deepEqual(creates(r.calls), []);
@@ -93,24 +108,37 @@ test('a lookup that fails for another reason publishes nothing', () => {
 });
 
 test('a pushed tag (no target) publishes its release on that tag', () => {
-  const r = publish('tag', 'v1.0.1');
+  const r = publish('tag', ['v1.0.1']);
   assert.equal(r.status, 0, r.stderr);
   const [create, ...more] = creates(r.calls);
   assert.deepEqual(more, []);
   const notes = create[create.indexOf('--notes') + 1];
-  assert.deepEqual(create, ['release', 'create', 'v1.0.1', 'picodeck-web-sim.zip',
+  assert.deepEqual(create, ['release', 'create', 'v1.0.1', r.zip,
     '--title', 'v1.0.1', '--notes', notes]);
   assert.match(notes, /^Built against PicoDeck v0\.6\.0 \(abcdef1\)\.\n/);
   assert.doesNotMatch(notes, /Rebuilt for/);
 });
 
 test('a follow release creates the tag on the target commit, with the Rebuilt for line', () => {
-  const r = publish('fresh', 'v1.0.1', TARGET);
+  const r = publish('fresh', ['v1.0.1', TARGET]);
   assert.equal(r.status, 0, r.stderr);
   const [create, ...more] = creates(r.calls);
   assert.deepEqual(more, []);
   const notes = create[create.indexOf('--notes') + 1];
-  assert.deepEqual(create, ['release', 'create', 'v1.0.1', 'picodeck-web-sim.zip',
+  assert.deepEqual(create, ['release', 'create', 'v1.0.1', r.zip,
     '--title', 'v1.0.1', '--notes', notes, '--target', TARGET]);
   assert.match(notes, /^Built against PicoDeck v0\.6\.0 \(abcdef1\)\.\nRebuilt for PicoDeck v0\.6\.0\.\n/);
+});
+
+test('works from another directory: the zip is resolved from the script path, not cwd', () => {
+  const r = publish('tag', ['v1.0.1'], { cwd: tmpdir() });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(creates(r.calls).length, 1);
+});
+
+test('a version mismatch (the build forgot WEB_SIM_VERSION) is refused', () => {
+  const r = publish('fresh', ['v1.0.2'], { info: { ...INFO, web_sim: 'v1.0.1' } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /packaged as web_sim v1\.0\.1, not v1\.0\.2/);
+  assert.deepEqual(r.calls, []);
 });
