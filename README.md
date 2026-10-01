@@ -72,7 +72,9 @@ or `PICODECK=...`).
   latest PicoDeck release up to six times, 10 s apart, until it is the
   dispatched tag, then decides on that tag; if it never is (GitHub is slow, or
   a later release came out), the run fails and publishes nothing, and the
-  daily check follows whatever is latest.
+  daily check follows whatever is latest. It also fails, rather than skip the
+  dispatched release quietly, when that release isn't newer than web-sim's
+  latest release (one landed in between): release by hand to build against it.
 - A follow runs `main`'s `build.yml` on the release's files (its scripts,
   Makefile and tests), and the release's `publish.sh`: a change to
   `build.yml` that needs newer scripts makes follows fail, safely, until the

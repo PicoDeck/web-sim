@@ -80,18 +80,24 @@ export function publishedAt(what, release) {
 // resolved.source (never by parsing why): a resolveRef lookup failure must
 // reach here as a rejection, not as a "no seam" why text that would compare
 // equal to the fallback case. Follows only a PicoDeck release published
-// after web-sim's latest release: one published before it was normally
-// already out when that release was built, so it chose its ref on purpose.
-// (Not if PicoDeck released while that build ran: its ref was resolved
-// first. That release is then followed at PicoDeck's next release.)
+// after web-sim's latest release: one published before it (or the same
+// second) was normally already out when that release was built, so it
+// chose its ref on purpose. (Not if PicoDeck released while that build ran:
+// its ref was resolved first. That release is then followed at PicoDeck's
+// next release, or fails a dispatched run: see shouldFollow.)
+// A decision not to follow carries a reason: 'no-seam', 'no-release',
+// 'built' or 'not-newer'.
 export function decide({ resolved, picodeck, release }) {
   if (resolved.source !== 'release') {
-    return { follow: false, why: `no PicoDeck release with the web build seam yet (${resolved.why})` };
+    return { follow: false, reason: 'no-seam',
+      why: `no PicoDeck release with the web build seam yet (${resolved.why})` };
   }
-  if (!release) return { follow: false, why: 'web-sim has no release yet: publish v1.0.0 by hand' };
+  if (!release) {
+    return { follow: false, reason: 'no-release', why: 'web-sim has no release yet: publish v1.0.0 by hand' };
+  }
   const built = builtAgainst(release);
   if (built === resolved.ref) {
-    return { follow: false, why: `${release.tag_name} is already built against ${resolved.ref}` };
+    return { follow: false, reason: 'built', why: `${release.tag_name} is already built against ${resolved.ref}` };
   }
   if (picodeck?.tag_name !== resolved.ref) {
     throw new Error(`PicoDeck's latest release lookup (${picodeck?.tag_name ?? 'none'}) `
@@ -100,8 +106,8 @@ export function decide({ resolved, picodeck, release }) {
   const picodeckAt = publishedAt('PicoDeck release', picodeck);
   const webSimAt = publishedAt('web-sim release', release);
   if (picodeckAt <= webSimAt) {
-    return { follow: false,
-      why: `PicoDeck's latest release ${resolved.ref} (published ${picodeck.published_at}) predates web-sim `
+    return { follow: false, reason: 'not-newer',
+      why: `PicoDeck's latest release ${resolved.ref} (published ${picodeck.published_at}) isn't newer than web-sim `
         + `${release.tag_name} (published ${release.published_at}, built against ${built ?? 'an unrecorded ref'}): `
         + "waiting for PicoDeck's next release" };
   }
@@ -136,7 +142,11 @@ export async function latestWebSimRelease() {
 // expectTag: the tag PicoDeck dispatched, or empty (the schedule, a manual
 // run) to read latest once; sleep: waitForLatest's pause (tests pass one
 // that returns at once). No catch-all: any rejection here propagates,
-// uncaught.
+// uncaught. A dispatched release that isn't newer than web-sim's latest
+// release (one landed in between: by hand, or a build that was running when
+// PicoDeck released) rejects: not following it quietly would skip it until
+// PicoDeck's next release. Without a dispatched tag that is just "nothing to
+// do".
 export async function shouldFollow({ pin, picodeckLatest, cmakeAt, webSimLatest, expectTag = '', sleep }) {
   let latest;
   if (expectTag) {
@@ -149,7 +159,13 @@ export async function shouldFollow({ pin, picodeckLatest, cmakeAt, webSimLatest,
   }
   const resolved = await resolveRef({ explicit: '', pin, latestTag: async () => latest?.tag_name ?? null, cmakeAt });
   const release = await webSimLatest();
-  return decide({ resolved, picodeck: latest, release });
+  const d = decide({ resolved, picodeck: latest, release });
+  if (expectTag && d.reason === 'not-newer') {
+    throw new Error(`the dispatched PicoDeck ${expectTag} (published ${latest.published_at}) isn't newer than `
+      + `web-sim's latest release ${release.tag_name} (published ${release.published_at}): not following it. `
+      + `To build web-sim against ${expectTag}, release by hand`);
+  }
+  return d;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

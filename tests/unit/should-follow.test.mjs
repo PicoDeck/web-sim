@@ -55,7 +55,8 @@ test('an early web-sim release against a develop commit stays until PicoDeck pub
   const early = release('v1.3.0', 'develop', '2026-09-05T10:00:00Z');
   const d = decide({ resolved: latest('v0.5.0'), picodeck: pd('v0.5.0'), release: early });
   assert.equal(d.follow, false);
-  assert.match(d.why, /v0\.5\.0 .*predates web-sim v1\.3\.0.*waiting for PicoDeck's next release/);
+  assert.match(d.why, /v0\.5\.0 .*isn't newer than web-sim v1\.3\.0.*waiting for PicoDeck's next release/);
+  assert.doesNotMatch(d.why, /predates/);
   // PicoDeck's next release is followed.
   const next = decide({ resolved: latest('v0.6.0'), picodeck: pd('v0.6.0'), release: early });
   assert.equal(next.follow, true);
@@ -68,10 +69,13 @@ test('a web-sim release against an older PicoDeck (the latest is broken) stays u
   assert.equal(decide({ resolved: latest('v0.7.0'), picodeck: pd('v0.7.0'), release: older }).follow, true);
 });
 
-test('a PicoDeck release published at the same second as web-sim\'s is not newer', () => {
+test('a PicoDeck release published at the same second as web-sim\'s is not newer, and the why says so accurately', () => {
   const d = decide({ resolved: latest('v0.6.0'), picodeck: pd('v0.6.0', WEB_SIM_AT),
     release: release('v1.2.3', 'v0.5.0') });
   assert.equal(d.follow, false);
+  // "predates" would be false for equal timestamps.
+  assert.match(d.why, /isn't newer than web-sim v1\.2\.3/);
+  assert.doesNotMatch(d.why, /predates/);
 });
 
 test('a missing or unparseable date is an error, never a silent follow', () => {
@@ -202,17 +206,45 @@ test('a stale latest release that catches up with the dispatched tag is followed
   assert.equal(gh.reads.length, 3);
 });
 
-test('a dispatched tag is decided on its own release\'s date, read once by the wait', async () => {
-  // The dispatched release predates web-sim's latest (released by hand
-  // against develop since): not followed, and latest is not read again.
+test('a dispatched release that isn\'t newer than web-sim\'s latest fails visibly, not skipped quietly', async () => {
+  // A web-sim release landed after the dispatched PicoDeck release (by hand,
+  // against develop): following silently would skip v0.6.0 until PicoDeck's
+  // next release, so the dispatched run fails, saying why. Decided on the
+  // dispatched release's own date: latest is read once by the wait.
+  const gh = lagging(['v0.6.0']);
+  await assert.rejects(shouldFollow({
+    pin: 'abc123', expectTag: 'v0.6.0', picodeckLatest: gh.picodeckLatest, sleep: gh.sleep,
+    cmakeAt: async () => WITH_SEAM,
+    webSimLatest: async () => release('v1.3.0', 'develop', '2026-09-15T10:00:00Z'),
+  }), (err) => {
+    assert.match(err.message, /the dispatched PicoDeck v0\.6\.0 \(published 2026-09-10T10:00:00Z\) isn't newer than web-sim's latest release v1\.3\.0 \(published 2026-09-15T10:00:00Z\)/);
+    assert.match(err.message, /not following it/);
+    return true;
+  });
+  assert.equal(gh.reads.length, 1);
+});
+
+test('without a dispatched tag (the schedule, a manual run), a PicoDeck release that isn\'t newer is just not followed', async () => {
+  for (const expectTag of [undefined, '']) {
+    const d = await shouldFollow({
+      pin: 'abc123', expectTag, picodeckLatest: async () => pd('v0.6.0'),
+      cmakeAt: async () => WITH_SEAM,
+      webSimLatest: async () => release('v1.3.0', 'develop', '2026-09-15T10:00:00Z'),
+    });
+    assert.equal(d.follow, false);
+    assert.match(d.why, /waiting for PicoDeck's next release/);
+  }
+});
+
+test('a dispatched release web-sim is already built against is not followed, and is not an error', async () => {
   const gh = lagging(['v0.6.0']);
   const d = await shouldFollow({
     pin: 'abc123', expectTag: 'v0.6.0', picodeckLatest: gh.picodeckLatest, sleep: gh.sleep,
     cmakeAt: async () => WITH_SEAM,
-    webSimLatest: async () => release('v1.3.0', 'develop', '2026-09-15T10:00:00Z'),
+    webSimLatest: async () => release('v1.3.0', 'v0.6.0', '2026-09-15T10:00:00Z'),
   });
   assert.equal(d.follow, false);
-  assert.equal(gh.reads.length, 1);
+  assert.match(d.why, /already built against v0\.6\.0/);
 });
 
 test('a latest release that never reaches the dispatched tag fails, naming both tags', async () => {
