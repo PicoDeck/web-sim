@@ -49,9 +49,10 @@ or `PICODECK=...`).
   next patch version, tagged on the same commit. A follow release never ships
   unreleased work from `main`: if PicoDeck's change needs web-sim work that
   isn't released yet, the follow run fails and you release by hand (push the
-  next `vX.Y.Z` tag). PicoDeck's release workflow sends `picodeck-release` when
-  its `WEB_SIM_DISPATCH_TOKEN` secret is set; a daily check covers it
-  otherwise.
+  next `vX.Y.Z` tag). PicoDeck's release workflow sends `picodeck-release`, with
+  its tag, when its `WEB_SIM_DISPATCH_TOKEN` secret is set; a daily check
+  covers it otherwise. A dispatched run waits up to a minute for GitHub's
+  latest PicoDeck release to be that tag, and fails if it never is.
 - `nightly-develop.yml` builds and tests against PicoDeck's develop every night.
 - A release rebuilds picodeck.net when the `PAGES_DEPLOY_HOOK` secret is set.
 - GitHub turns off a public repo's scheduled workflows (the daily check,

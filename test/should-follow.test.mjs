@@ -80,3 +80,77 @@ test('shouldFollow does not follow while the latest release predates the seam', 
   });
   assert.equal(d.follow, false);
 });
+
+// PicoDeck's release.yml dispatches its tag (EXPECT_PICODECK_TAG): GitHub's
+// releases/latest may still name the previous release for a while after it.
+// latestTags: what successive latestTag() reads return (the last one repeats).
+function lagging(latestTags) {
+  const reads = [];
+  const sleeps = [];
+  return {
+    reads, sleeps,
+    latestTag: async () => { reads.push(1); return latestTags[Math.min(reads.length, latestTags.length) - 1]; },
+    sleep: async (ms) => { sleeps.push(ms); },
+  };
+}
+
+test('a stale latest release that catches up with the dispatched tag is followed', async () => {
+  const gh = lagging(['v0.5.0', 'v0.5.0', 'v0.6.0']);
+  const d = await shouldFollow({
+    pin: 'abc123', expectTag: 'v0.6.0', latestTag: gh.latestTag, sleep: gh.sleep,
+    cmakeAt: async () => WITH_SEAM,
+    latestRelease: async () => release('v1.2.3', 'v0.5.0'),
+  });
+  assert.deepEqual({ ...d, why: undefined },
+    { follow: true, picodeck_ref: 'v0.6.0', next: 'v1.2.4', web_sim_ref: 'v1.2.3', why: undefined });
+  assert.deepEqual(gh.sleeps, [10_000, 10_000]);
+});
+
+test('a latest release that never reaches the dispatched tag fails, naming both tags', async () => {
+  const gh = lagging(['v0.5.0']);
+  await assert.rejects(shouldFollow({
+    pin: 'abc123', expectTag: 'v0.6.0', latestTag: gh.latestTag, sleep: gh.sleep,
+    cmakeAt: async () => WITH_SEAM,
+    latestRelease: async () => { throw new Error('should not be called'); },
+  }), (err) => /v0\.5\.0/.test(err.message) && /v0\.6\.0/.test(err.message));
+  assert.equal(gh.reads.length, 6);
+  assert.deepEqual(gh.sleeps, Array(5).fill(10_000));
+});
+
+test('an expected tag that is not a plain release tag is refused before any lookup', async () => {
+  for (const bad of ['main', '0.6.0', 'v0.6', 'v0.6.0 ', 'v0.6.0;echo', 'v0.6.0/x', '$(id)', 'v0.6.0\nv0.7.0']) {
+    const gh = lagging(['v0.6.0']);
+    await assert.rejects(shouldFollow({
+      pin: 'abc123', expectTag: bad, latestTag: gh.latestTag, sleep: gh.sleep,
+      cmakeAt: async () => WITH_SEAM,
+      latestRelease: async () => release('v1.2.3', 'v0.5.0'),
+    }), /not a plain release tag/, JSON.stringify(bad));
+    assert.equal(gh.reads.length, 0, JSON.stringify(bad));
+  }
+});
+
+test('an expected tag may carry a pre-release or build suffix', async () => {
+  const gh = lagging(['v0.6.0-rc.1']);
+  const d = await shouldFollow({
+    pin: 'abc123', expectTag: 'v0.6.0-rc.1', latestTag: gh.latestTag, sleep: gh.sleep,
+    cmakeAt: async () => WITH_SEAM,
+    latestRelease: async () => release('v1.2.3', 'v0.5.0'),
+  });
+  assert.equal(d.picodeck_ref, 'v0.6.0-rc.1');
+  assert.deepEqual(gh.sleeps, []);
+});
+
+test('with no expected tag (the schedule, a manual run) latest is read once, without waiting', async () => {
+  for (const expectTag of [undefined, '']) {
+    const gh = lagging(['v0.5.0', 'v0.6.0']);
+    const d = await shouldFollow({
+      pin: 'abc123', expectTag, latestTag: gh.latestTag, sleep: gh.sleep,
+      cmakeAt: async () => WITH_SEAM,
+      latestRelease: async () => release('v1.2.3', 'v0.5.0'),
+    });
+    assert.equal(d.follow, false);
+    assert.match(d.why, /already built against v0\.5\.0/);
+    assert.equal(gh.reads.length, 1);
+    assert.deepEqual(gh.sleeps, []);
+  }
+});

@@ -10,11 +10,39 @@
 // An API or network failure must never read as "follow": resolveRef and the
 // web-sim release lookup are never wrapped in a catch-all here, so a lookup
 // error rejects shouldFollow() and the CLI exits 1 instead of publishing.
+//
+// PicoDeck's release.yml sends its tag with picodeck-release
+// (client_payload.tag, EXPECT_PICODECK_TAG here). Just after a release,
+// GitHub's releases/latest can still name the previous one, which would read
+// as "nothing new" and quietly not follow; so with an expected tag this first
+// re-reads latest until it names that tag, and fails if it never does.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { github, output, readPin, resolveRef } from './picodeck-ref.mjs';
 
 export const WEB_SIM_REPO = 'PicoDeck/web-sim';
+
+// A plain release tag: vX.Y.Z, optionally with a pre-release or build suffix.
+export const PLAIN_TAG = /^v\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$/;
+// How long to wait for releases/latest to name the dispatched tag: reads, and
+// the pause between two of them.
+export const LATEST_TRIES = 6;
+export const LATEST_WAIT_MS = 10_000;
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Re-reads latestTag() until it is `expected`, up to LATEST_TRIES times with
+// sleep(LATEST_WAIT_MS) between reads; rejects naming both tags if it never is.
+export async function waitForLatest({ expected, latestTag, sleep = pause }) {
+  let tag = null;
+  for (let i = 0; i < LATEST_TRIES; i++) {
+    if (i > 0) await sleep(LATEST_WAIT_MS);
+    tag = await latestTag();
+    if (tag === expected) return tag;
+  }
+  throw new Error(`PicoDeck released ${expected}, but its latest release is still `
+    + `${tag ?? 'none'} after ${LATEST_TRIES} reads ${LATEST_WAIT_MS / 1000} s apart`);
+}
 
 export function bumpPatch(tag) {
   const m = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag ?? '');
@@ -62,9 +90,18 @@ async function latestWebSimRelease() {
 
 // pin, latestTag, cmakeAt: resolveRef()'s inputs (no explicit ref: this is
 // always "what would CI build today"); latestRelease: web-sim's latest
-// release lookup, only consulted once resolveRef succeeds. No catch-all: any
-// rejection here propagates, uncaught.
-export async function shouldFollow({ pin, latestTag, cmakeAt, latestRelease }) {
+// release lookup, only consulted once resolveRef succeeds. expectTag: the tag
+// PicoDeck dispatched, or empty (the schedule, a manual run) to read latest
+// once; sleep: waitForLatest's pause (tests pass one that returns at once).
+// No catch-all: any rejection here propagates, uncaught.
+export async function shouldFollow({ pin, latestTag, cmakeAt, latestRelease, expectTag = '', sleep }) {
+  if (expectTag) {
+    if (!PLAIN_TAG.test(expectTag)) {
+      throw new Error(`the dispatched PicoDeck tag ${JSON.stringify(expectTag)} is not a plain release tag (vX.Y.Z)`);
+    }
+    const tag = await waitForLatest({ expected: expectTag, latestTag, sleep });
+    latestTag = async () => tag;  // decide on the release that was dispatched
+  }
   const resolved = await resolveRef({ explicit: '', pin, latestTag, cmakeAt });
   const release = await latestRelease();
   return decide({ resolved, release });
@@ -72,7 +109,8 @@ export async function shouldFollow({ pin, latestTag, cmakeAt, latestRelease }) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const pin = readPin(readFileSync(new URL('../picodeck.pin', import.meta.url), 'utf8'));
-  shouldFollow({ pin, latestTag: github.latestTag, cmakeAt: github.cmakeAt, latestRelease: latestWebSimRelease })
+  shouldFollow({ pin, latestTag: github.latestTag, cmakeAt: github.cmakeAt, latestRelease: latestWebSimRelease,
+    expectTag: process.env.EXPECT_PICODECK_TAG ?? '' })
     .then((d) => {
       console.error(`should-follow: ${d.why}`);
       output(outputsOf(d));

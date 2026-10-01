@@ -1,8 +1,8 @@
 # Follows PicoDeck's releases: when PicoDeck publishes one (its release.yml
-# sends `picodeck-release`, or the daily check finds it), rebuild web-sim's
-# latest release (its tag's commit, never unreleased work on main) against it,
-# test it and, if everything passes, publish it as the next patch release. A
-# failure publishes nothing: picodeck.net keeps the previous demo.
+# sends `picodeck-release` with the tag, or the daily check finds it), rebuild
+# web-sim's latest release (its tag's commit, never unreleased work on main)
+# against it, test it and, if everything passes, publish it as the next patch
+# release. A failure publishes nothing: picodeck.net keeps the previous demo.
 name: follow-picodeck
 
 on:
@@ -37,6 +37,9 @@ jobs:
         id: decide
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # The tag PicoDeck dispatched (empty on the schedule and manual
+          # runs): should-follow waits for releases/latest to name it.
+          EXPECT_PICODECK_TAG: ${{ github.event.client_payload.tag }}
         run: node scripts/should-follow.mjs
 
   build:
