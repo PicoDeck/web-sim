@@ -72,6 +72,22 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: web-sim
+      # This workflow's own scripts (main's), for the check below: the
+      # rebuilt release's checkout above may predate release-version.mjs.
+      - uses: actions/checkout@v4
+        with:
+          path: follow-tools
+          persist-credentials: false
+      # Just before publishing: the release this follow rebuilt must still be
+      # web-sim's latest, and next still a new tag greater than it. A release
+      # that landed during the follow (by hand) would otherwise be overtaken
+      # as "latest" by this follow's lower version. Read-only lookups.
+      - name: Check ${{ needs.check.outputs.web_sim_ref }} is still web-sim's latest release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NEXT: ${{ needs.check.outputs.next }}
+          WEB_SIM_REF: ${{ needs.check.outputs.web_sim_ref }}
+        run: node follow-tools/scripts/release-version.mjs "$NEXT" --follow "$WEB_SIM_REF"
       # --rebuilt adds "Rebuilt for PicoDeck <ref>." to the notes. This is the
       # release's own publish.sh; one older than the flag ignores it and adds
       # the line anyway (it did so for any target).

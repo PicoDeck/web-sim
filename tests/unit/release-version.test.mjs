@@ -4,7 +4,7 @@ import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { checkRelease, checkVersion, compareVersions, webSim } from '../../scripts/release-version.mjs';
+import { checkFollow, checkRelease, checkVersion, compareVersions, webSim } from '../../scripts/release-version.mjs';
 
 const SCRIPT = fileURLToPath(new URL('../../scripts/release-version.mjs', import.meta.url));
 
@@ -82,6 +82,43 @@ test('a failed lookup is an error, never a pass', async () => {
   await assert.rejects(checkRelease({ version: 'v1.1.0', ...lookups({ exists: fail }) }), /HTTP 503/);
 });
 
+// A follow release (follow-picodeck.yml, just before publish.sh): `version`
+// (next) rebuilds `rebuilt` (web_sim_ref), which must still be web-sim's
+// latest release, and must still be greater than it.
+test('a follow release passes while the release it rebuilt is still web-sim\'s latest', () => {
+  assert.equal(checkFollow({ version: 'v1.0.2', rebuilt: 'v1.0.1', latest: 'v1.0.1', tagExists: false }), 'v1.0.2');
+});
+
+test('a follow release is refused when a newer web-sim release landed during the follow', () => {
+  // A manual v1.1.0 published while the follow built v1.0.2: publishing
+  // v1.0.2 now would make the lower version "latest".
+  assert.throws(() => checkFollow({ version: 'v1.0.2', rebuilt: 'v1.0.1', latest: 'v1.1.0', tagExists: false }),
+    /web-sim's latest release is now v1\.1\.0, not v1\.0\.1 \(the release this follow rebuilt\): not publishing v1\.0\.2 over it/);
+  assert.throws(() => checkFollow({ version: 'v1.0.2', rebuilt: 'v1.0.1', latest: null, tagExists: false }),
+    /web-sim's latest release is now none, not v1\.0\.1/);
+});
+
+test('a follow release must still be greater than the release it rebuilt, under a new tag', () => {
+  assert.throws(() => checkFollow({ version: 'v1.0.1', rebuilt: 'v1.0.1', latest: 'v1.0.1', tagExists: false }),
+    /v1\.0\.1 is not greater than web-sim's latest release v1\.0\.1/);
+  assert.throws(() => checkFollow({ version: 'v1.0.2', rebuilt: 'v1.0.1', latest: 'v1.0.1', tagExists: true }),
+    /tag v1\.0\.2 already exists/);
+});
+
+test('a follow\'s rebuilt release that is not vX.Y.Z is a clear error', () => {
+  assert.throws(() => checkFollow({ version: 'v1.0.2', rebuilt: 'main', latest: 'v1.0.1', tagExists: false }),
+    /the rebuilt release "main" is not vX\.Y\.Z/);
+});
+
+test('checkRelease with follows checks the follow, and refuses a malformed rebuilt tag before any lookup', async () => {
+  assert.equal(await checkRelease({ version: 'v1.0.2', follows: 'v1.0.1', ...lookups() }), 'v1.0.2');
+  await assert.rejects(checkRelease({ version: 'v1.0.2', follows: 'v1.0.1', ...lookups({ latest: 'v1.1.0' }) }),
+    /latest release is now v1\.1\.0/);
+  const gh = lookups();
+  await assert.rejects(checkRelease({ version: 'v1.0.2', follows: 'v1.0.1/../x', ...gh }), /is not vX\.Y\.Z/);
+  assert.deepEqual(gh.calls, []);
+});
+
 // webSim: the CLI's GitHub lookups (a stubbed fetch stands in for the API).
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -111,6 +148,34 @@ test('webSim.latestTag: the latest release\'s tag, or null when there is none', 
   assert.equal(await webSim.latestTag(), null);
   stubFetch(500);
   await assert.rejects(webSim.latestTag(), /HTTP 500/);
+});
+
+test('the CLI takes --follow <web_sim_ref>, and refuses a malformed one before any lookup', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, 'v1.0.2', '--follow', 'main'], {
+    encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_OUTPUT: '' },
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^release-version: the rebuilt release "main" is not vX\.Y\.Z/);
+  assert.equal(r.stdout, '');
+});
+
+test('an empty --follow is an error, not a fall back to the manual check', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, 'v1.0.2', '--follow', ''], {
+    encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_OUTPUT: '' },
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /the rebuilt release "" is not vX\.Y\.Z/);
+});
+
+test('the CLI refuses an unknown option, a missing --follow value, or not exactly one version', () => {
+  for (const args of [['v1.0.2', '--folow', 'v1.0.1'], ['v1.0.2', '--follow'], ['v1.0.2', 'v1.0.3'], []]) {
+    const r = spawnSync(process.execPath, [SCRIPT, ...args], {
+      encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_OUTPUT: '' },
+    });
+    assert.equal(r.status, 1, JSON.stringify(args));
+    assert.match(r.stderr, /^release-version: .*\nusage: scripts\/release-version\.mjs <version> \[--follow <web-sim release>\]/,
+      JSON.stringify(args));
+  }
 });
 
 test('the CLI refuses a malformed version with a clear error and writes no output', () => {

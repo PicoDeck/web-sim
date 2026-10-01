@@ -78,7 +78,10 @@ or `PICODECK=...`).
 - A follow runs `main`'s `build.yml` on the release's files (its scripts,
   Makefile and tests), and the release's `publish.sh`: a change to
   `build.yml` that needs newer scripts makes follows fail, safely, until the
-  next release has those scripts.
+  next release has those scripts. Just before publishing, it checks with
+  `main`'s `scripts/release-version.mjs` that the release it rebuilt is still
+  web-sim's latest and its version still a new tag above it: if a release
+  landed during the follow, it fails and publishes nothing.
 - Run `ci` from the Actions tab with a `picodeck_ref` to build and test
   against an unreleased PicoDeck (a branch or commit): the zip is the run's
   artifact; nothing is published.
