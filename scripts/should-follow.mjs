@@ -65,12 +65,14 @@ export function decide({ resolved, release }) {
     return { follow: false, why: `no PicoDeck release with the web build seam yet (${resolved.why})` };
   }
   if (!release) return { follow: false, why: 'web-sim has no release yet: publish v1.0.0 by hand' };
-  if (builtAgainst(release) === resolved.ref) {
+  const built = builtAgainst(release);
+  if (built === resolved.ref) {
     return { follow: false, why: `${release.tag_name} is already built against ${resolved.ref}` };
   }
+  const builtWhy = built ? ` was built against ${built}` : "'s notes don't record a PicoDeck ref";
   return { follow: true, picodeck_ref: resolved.ref, next: bumpPatch(release.tag_name),
     web_sim_ref: release.tag_name,
-    why: `${release.tag_name} was built against ${builtAgainst(release)}; PicoDeck released ${resolved.ref}` };
+    why: `${release.tag_name}${builtWhy}; PicoDeck released ${resolved.ref}` };
 }
 
 // The CLI's outputs for a decision: every key present, empty when unset.

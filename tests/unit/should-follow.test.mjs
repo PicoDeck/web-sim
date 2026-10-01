@@ -37,6 +37,14 @@ test('the first release is made by hand', () => {
   assert.equal(decide({ resolved: latest('v0.5.0'), release: null }).follow, false);
 });
 
+test('a release whose notes do not record a PicoDeck ref says so, not "built against null"', () => {
+  const r = { tag_name: 'v1.2.3', body: 'No ref recorded here.\n' };
+  const d = decide({ resolved: latest('v0.6.0'), release: r });
+  assert.equal(d.follow, true);
+  assert.doesNotMatch(d.why, /built against null/);
+  assert.match(d.why, /v1\.2\.3.*notes don't record a PicoDeck ref.*PicoDeck released v0\.6\.0/);
+});
+
 test('bumpPatch refuses a tag that is not vX.Y.Z', () => {
   assert.equal(bumpPatch('v1.9.9'), 'v1.9.10');
   assert.throws(() => bumpPatch('1.2'), /not vX\.Y\.Z/);
