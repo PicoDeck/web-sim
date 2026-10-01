@@ -7,9 +7,9 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FILES, packageBuild } from '../scripts/package.mjs';
+import { FILES, packageBuild } from '../../scripts/package.mjs';
 
-const PUBLISH = fileURLToPath(new URL('../scripts/publish.sh', import.meta.url));
+const PUBLISH = fileURLToPath(new URL('../../scripts/publish.sh', import.meta.url));
 const INFO = { web_sim: 'v1.0.1', picodeck: { ref: 'v0.6.0', commit: 'abcdef1234' }, apps: { builtin: [], store: [] } };
 const TARGET = '0123456789abcdef0123456789abcdef01234567';
 

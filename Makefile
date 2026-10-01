@@ -53,7 +53,7 @@ serve:
 	cd build && python3 -m http.server 8765 --bind 127.0.0.1
 
 unit:
-	node --test test/*.test.mjs
+	node --test tests/unit/*.test.mjs
 
 clean:
 	rm -rf build build-test picodeck-web-sim.zip test-results playwright-report

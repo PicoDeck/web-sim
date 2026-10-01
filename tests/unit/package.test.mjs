@@ -4,8 +4,8 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
-import { FILES, packageBuild } from '../scripts/package.mjs';
-import { notesFromZip } from '../scripts/notes.mjs';
+import { FILES, packageBuild } from '../../scripts/package.mjs';
+import { notesFromZip } from '../../scripts/notes.mjs';
 
 const INFO = { web_sim: 'v1.0.0', picodeck: { ref: 'v0.5.0', commit: 'abcdef1234' }, apps: { builtin: [], store: [] } };
 

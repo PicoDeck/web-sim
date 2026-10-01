@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appVersion, releaseNotes, releaseTag, versionInfo } from '../scripts/version.mjs';
-import { builtAgainst } from '../scripts/should-follow.mjs';
+import { appVersion, releaseNotes, releaseTag, versionInfo } from '../../scripts/version.mjs';
+import { builtAgainst } from '../../scripts/should-follow.mjs';
 
 const APPS = {
   builtin: ['snake'],

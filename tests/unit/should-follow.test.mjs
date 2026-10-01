@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bumpPatch, decide, outputsOf, shouldFollow } from '../scripts/should-follow.mjs';
+import { bumpPatch, decide, outputsOf, shouldFollow } from '../../scripts/should-follow.mjs';
 
 const WITH_SEAM = 'if(EMSCRIPTEN)\n  include(${PICODECK_WEB_DIR}/web.cmake)\n';
 const WITHOUT = 'if(EMSCRIPTEN)\n  set(SIM_PLATFORM_SOURCES web/web_platform.c)\n';
