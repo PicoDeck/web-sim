@@ -65,14 +65,15 @@ void web_yield_if_due(void) {
 EM_ASYNC_JS(void, web_fs_init_js, (const char *dir_c), {
   var dir = UTF8ToString(dir_c);
   var syncing = false;
+  // Resolves true on a clean sync, false on a failed one (logged once here).
   function sync(populate) {
     return new Promise(function (resolve) {
-      if (syncing) return resolve();
+      if (syncing) return resolve(true);
       syncing = true;
       FS.syncfs(populate, function (err) {
         syncing = false;
         if (err) console.warn('[WEB] save sync failed:', err);
-        resolve();
+        resolve(!err);
       });
     });
   }
@@ -83,7 +84,10 @@ EM_ASYNC_JS(void, web_fs_init_js, (const char *dir_c), {
     console.warn('[WEB] persistent saves unavailable:', e);
     return;
   }
-  await sync(true);
+  // No usable IndexedDB (some private windows, or a stubbed-out API): the
+  // first sync already warned once, and nothing here would ever succeed, so
+  // don't poll it every 2 s for the rest of the session.
+  if (!(await sync(true))) return;
   setInterval(function () { sync(false); }, 2000);
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') sync(false);

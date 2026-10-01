@@ -138,6 +138,12 @@ test('the page still runs without IndexedDB (saves stay in memory) @release', as
   });
   const { errors, consoleLines } = await boot(page);
   await waitForLauncher(page, consoleLines);
+  // The first save sync fails (no usable IndexedDB) and must not then retry
+  // every 2 s for the rest of the session (platform/web_platform.c,
+  // web_fs_init_js): at most one warning in a 5 s window.
+  await page.waitForTimeout(5000);
+  const warnings = consoleLines.filter((l) => /\[WEB\] save sync failed/.test(l));
+  expect(warnings.length, consoleLines.join('\n')).toBeLessThanOrEqual(1);
   expect(errors).toEqual([]);
 });
 
