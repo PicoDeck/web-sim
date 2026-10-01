@@ -33,6 +33,13 @@ function fileExists(path) {
   try { FS.stat(path); return true; } catch (e) { return false; }
 }
 
+// Waits until a path exists in the mounted FS (shared by the fixture tests
+// and the per-app "still running" wait: three tests used to repeat this as
+// an inline page.waitForFunction closure).
+function waitForFile(page, path, options) {
+  return page.waitForFunction(fileExists, path, options);
+}
+
 // The screen as the display shows it isn't blank: more than 8 distinct
 // colours. Self-contained (no outside references) so it can run as a
 // page.waitForFunction predicate.
@@ -97,7 +104,7 @@ for (const app of ALL_APPS) {
     // Wait until the launcher has started the app, then give it time to load
     // and draw: it must still be running (running.txt is gone once the
     // launcher is back, so this doesn't depend on any screen pixel).
-    await page.waitForFunction(fileExists, RUNNING, { timeout: 30_000 });
+    await waitForFile(page, RUNNING, { timeout: 30_000 });
     await page.waitForTimeout(2000);
     expect(await page.evaluate(fileExists, RUNNING)).toBe(true);
     expect(await page.evaluate(fileText, '/sd/system/error.log')).toBeNull();
@@ -134,8 +141,7 @@ test.describe('with the fixture apps', () => {
 
   test('keys reach the app', async ({ page }) => {
     await boot(page, '?app=web_test');
-    await page.waitForFunction((p) => { try { FS.stat(p); return true; } catch (e) { return false; } },
-      `${FIXTURE_DATA}/boots.txt`, { timeout: 30_000 });
+    await waitForFile(page, `${FIXTURE_DATA}/boots.txt`, { timeout: 30_000 });
     await page.locator('#canvas').focus();
     await page.keyboard.press('Enter');
     await page.waitForFunction((p) => { try { return FS.readFile(p, { encoding: 'utf8' }) === '1'; }
@@ -144,8 +150,7 @@ test.describe('with the fixture apps', () => {
 
   test('saved data survives a reload', async ({ page }) => {
     await boot(page, '?app=web_test');
-    await page.waitForFunction((p) => { try { FS.stat(p); return true; } catch (e) { return false; } },
-      `${FIXTURE_DATA}/boots.txt`, { timeout: 30_000 });
+    await waitForFile(page, `${FIXTURE_DATA}/boots.txt`, { timeout: 30_000 });
     const first = Number(await page.evaluate(fileText, `${FIXTURE_DATA}/boots.txt`));
     // Saves are written back to IndexedDB every 2 s and when the page hides.
     await page.waitForTimeout(3000);
@@ -160,7 +165,7 @@ test.describe('with the fixture apps', () => {
   // tab must still get its event loop back, or the page freezes for good.
   test('a Lua loop that never yields leaves the page responsive', async ({ page }) => {
     const { errors } = await boot(page, '?app=web_busy');
-    await page.waitForFunction(fileExists, `${BUSY_DATA}/started.txt`, { timeout: 30_000 });
+    await waitForFile(page, `${BUSY_DATA}/started.txt`, { timeout: 30_000 });
     // Wait in the test, not with page.waitForTimeout: on a frozen page every
     // page call hangs (the trace snapshots the page after each one). The
     // fixture sleeps 500 ms after its marker, then spins: by now it spins.
