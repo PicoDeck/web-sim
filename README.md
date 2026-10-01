@@ -54,3 +54,8 @@ or `PICODECK=...`).
   otherwise.
 - `nightly-develop.yml` builds and tests against PicoDeck's develop every night.
 - A release rebuilds picodeck.net when the `PAGES_DEPLOY_HOOK` secret is set.
+- GitHub turns off a public repo's scheduled workflows (the daily check,
+  `nightly-develop.yml`) after 60 days with no repository activity;
+  re-enable them from the Actions tab when that happens. PicoDeck's
+  `WEB_SIM_DISPATCH_TOKEN` makes following immediate and independent of
+  schedules.
