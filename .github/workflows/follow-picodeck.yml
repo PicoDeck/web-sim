@@ -3,6 +3,8 @@
 # web-sim's latest release (its tag's commit, never unreleased work on main)
 # against it, test it and, if everything passes, publish it as the next patch
 # release. A failure publishes nothing: picodeck.net keeps the previous demo.
+# Run by hand (Actions > follow-picodeck > Run workflow) on main only: a run
+# on another branch is refused.
 name: follow-picodeck
 
 on:
@@ -27,6 +29,18 @@ jobs:
       next: ${{ steps.decide.outputs.next }}
       web_sim_ref: ${{ steps.decide.outputs.web_sim_ref }}
     steps:
+      # A manual run publishes a real release with this branch's workflows
+      # and scripts: only main's, as release.yml's manual path. Schedule and
+      # repository_dispatch runs are always on the default branch.
+      - name: Check the run is on main
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != refs/heads/main ]; then
+            echo "::error::a manual follow runs only on main, not $REF: choose main under \"Use workflow from\""
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

@@ -71,7 +71,9 @@ or `PICODECK=...`).
   release: until web-sim has a release, and a PicoDeck release has the web
   build seam, it does nothing. PicoDeck's release workflow sends
   `picodeck-release`, with its tag, when its `WEB_SIM_DISPATCH_TOKEN` secret
-  is set; a daily check covers it otherwise. A dispatched run reads GitHub's
+  is set; a daily check covers it otherwise (and it can be run by hand from
+  the Actions tab, on `main` only: a run on another branch is refused). A
+  dispatched run reads GitHub's
   latest PicoDeck release up to six times, 10 s apart, until it is the
   dispatched tag, then decides on that tag; if it never is (GitHub is slow, or
   a later release came out), the run fails and publishes nothing, and the
