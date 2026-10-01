@@ -2,7 +2,9 @@
 // release notes, whose "Built against PicoDeck <ref>" line
 // scripts/should-follow.mjs reads back. A follow release (one
 // follow-picodeck.yml made for a new PicoDeck release) also says so in a
-// "Rebuilt for PicoDeck <ref>." line right after the "Built against" one.
+// "Rebuilt for PicoDeck <ref>." line right after the "Built against" one,
+// which should-follow.mjs reads too: it judges a follow release by the date
+// of the PicoDeck release it was rebuilt for.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

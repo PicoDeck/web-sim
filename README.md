@@ -60,26 +60,30 @@ or `PICODECK=...`).
 - When PicoDeck releases, `follow-picodeck.yml` rebuilds the latest web-sim
   release's commit against it and, if the tests pass, publishes that as the
   next patch version, tagged on the same commit. It follows a PicoDeck release
-  only if PicoDeck published it after web-sim's latest release (by the two
-  releases' publish times) and that release isn't already built against it: a
-  web-sim release made after a PicoDeck release chose its ref, so it stays. So
-  does one whose build was already running when PicoDeck released (its ref was
-  resolved first): release again by hand to pick that release up before
-  PicoDeck's next one. A follow release never ships unreleased work from
-  `main`: if PicoDeck's change needs web-sim work that isn't released yet, the
-  follow run fails and you release by hand. It waits for the first hand-made
-  release: until web-sim has a release, and a PicoDeck release has the web
-  build seam, it does nothing. PicoDeck's release workflow sends
-  `picodeck-release`, with its tag, when its `WEB_SIM_DISPATCH_TOKEN` secret
-  is set; a daily check covers it otherwise (and it can be run by hand from
-  the Actions tab, on `main` only: a run on another branch is refused). A
-  dispatched run reads GitHub's
-  latest PicoDeck release up to six times, 10 s apart, until it is the
-  dispatched tag, then decides on that tag; if it never is (GitHub is slow, or
-  a later release came out), the run fails and publishes nothing, and the
-  daily check follows whatever is latest. It also fails, rather than skip the
-  dispatched release quietly, when that release isn't newer than web-sim's
-  latest release (one landed in between): release by hand to build against it.
+  only if web-sim's latest release isn't already built against it and
+  PicoDeck published it after that release (by the two releases' publish
+  times): a web-sim release made by hand or by a pushed tag after a PicoDeck
+  release chose its ref, so it stays. So does one whose build was already
+  running when PicoDeck released (its ref was resolved first): release again
+  by hand to pick that release up before PicoDeck's next one. A follow release
+  chose nothing, so it is judged by the PicoDeck release it was rebuilt for
+  (the `Rebuilt for PicoDeck <ref>` line in its notes) instead: a PicoDeck
+  release published while a follow was building is followed next. A follow
+  release never ships unreleased work from `main`: if PicoDeck's change needs
+  web-sim work that isn't released yet, the follow run fails and you release
+  by hand. It waits for the first hand-made release: until web-sim has a
+  release, and a PicoDeck release has the web build seam, it does nothing.
+  PicoDeck's release workflow sends `picodeck-release`, with its tag, when its
+  `WEB_SIM_DISPATCH_TOKEN` secret is set; a daily check covers it otherwise
+  (and it can be run by hand from the Actions tab, on `main` only: a run on
+  another branch is refused). A dispatched run reads GitHub's latest PicoDeck
+  release up to six times, 10 s apart, until it is the dispatched tag, then
+  decides on that tag; if it never is (GitHub is slow, or a later release came
+  out), the run fails and publishes nothing, and the daily check follows
+  whatever is latest. It also fails, rather than skip the dispatched release
+  quietly, when that release isn't newer by the rule above (a release made by
+  hand or by a pushed tag landed in between): release by hand to build
+  against it.
 - A follow runs `main`'s `build.yml` on the release's files (its scripts,
   Makefile and tests), and the release's `publish.sh`: a change to
   `build.yml` that needs newer scripts makes follows fail, safely, until the

@@ -2,9 +2,11 @@
 // Whether web-sim should publish a release for a new PicoDeck release: when
 // PicoDeck's latest release has the web build seam, web-sim's latest release
 // was built against another ref, and PicoDeck published that release after
-// web-sim published its latest. The rule is event-based: a web-sim release
-// made by hand against a develop commit (or an older PicoDeck, while the
-// latest one breaks the web build) stays until PicoDeck's next release.
+// web-sim published its latest -- or, when web-sim's latest is itself a
+// follow release, after the PicoDeck release that follow was rebuilt for. The
+// rule is event-based: a web-sim release made by hand against a develop
+// commit (or an older PicoDeck, while the latest one breaks the web build)
+// stays until PicoDeck's next release.
 // Prints follow=, picodeck_ref=, next= (the next patch version) and
 // web_sim_ref= (web-sim's latest release tag: a follow release rebuilds that
 // release's commit, never unreleased work on main), and appends them to
@@ -61,6 +63,13 @@ export function builtAgainst(release) {
   return /Built against PicoDeck (\S+) \(/.exec(release?.body ?? '')?.[1] ?? null;
 }
 
+// The PicoDeck ref a follow release was rebuilt for, from the "Rebuilt for
+// PicoDeck <ref>." line follow-picodeck.yml's publish.sh --rebuilt adds to
+// its notes; null for any other release (made by hand or by a pushed tag).
+export function rebuiltFor(release) {
+  return /Rebuilt for PicoDeck (\S+)\./.exec(release?.body ?? '')?.[1] ?? null;
+}
+
 // GitHub's timestamp form (2026-09-30T12:34:56Z): anything else, or a date
 // that doesn't exist, is an error rather than a guess.
 const GITHUB_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
@@ -73,21 +82,43 @@ export function publishedAt(what, release) {
   return ms;
 }
 
+// The tag of the PicoDeck release decide() needs looked up, or null: the
+// one web-sim's latest release was rebuilt for, when that release is a
+// follow release decide() will judge by date (PicoDeck's latest has the
+// seam, and the follow isn't already built against it). Throws on a rebuilt
+// ref that isn't a release tag: it goes into a URL.
+export function rebuiltLookup({ resolved, release }) {
+  if (resolved.source !== 'release' || !release || builtAgainst(release) === resolved.ref) return null;
+  const rebuilt = rebuiltFor(release);
+  if (rebuilt !== null && !PLAIN_TAG.test(rebuilt)) {
+    throw new Error(`web-sim ${release.tag_name}'s notes say it was rebuilt for PicoDeck ${JSON.stringify(rebuilt)}, `
+      + 'which is not a release tag');
+  }
+  return rebuilt;
+}
+
 // resolved: resolveRef()'s result with no explicit ref; picodeck: PicoDeck's
 // latest release ({ tag_name, published_at }, the one resolved.ref came
-// from); release: web-sim's latest release (GitHub API object) or null.
+// from); release: web-sim's latest release (GitHub API object) or null;
+// rebuiltRelease: when release is a follow release, the PicoDeck release it
+// was rebuilt for ({ tag_name, published_at }, looked up by rebuiltLookup's
+// tag; null when there is none).
 // Pure: no lookups. Tells a real new release apart from a fallback by
 // resolved.source (never by parsing why): a resolveRef lookup failure must
 // reach here as a rejection, not as a "no seam" why text that would compare
-// equal to the fallback case. Follows only a PicoDeck release published
-// after web-sim's latest release: one published before it (or the same
-// second) was normally already out when that release was built, so it
-// chose its ref on purpose. (Not if PicoDeck released while that build ran:
-// its ref was resolved first. That release is then followed at PicoDeck's
-// next release, or fails a dispatched run: see shouldFollow.)
+// equal to the fallback case. When web-sim's latest release was made by hand
+// or by a pushed tag, follows only a PicoDeck release published after it:
+// one published before it (or the same second) was normally already out
+// when that release was built, so it chose its ref on purpose. (Not if
+// PicoDeck released while that build ran: its ref was resolved first. That
+// release is then followed at PicoDeck's next release, or fails a dispatched
+// run: see shouldFollow.) A follow release chose nothing, so it is judged by
+// the PicoDeck release it was rebuilt for instead: a PicoDeck release
+// published while the follow built is followed in turn.
 // A decision not to follow carries a reason: 'no-seam', 'no-release',
-// 'built' or 'not-newer'.
-export function decide({ resolved, picodeck, release }) {
+// 'built' or 'not-newer'; a 'not-newer' one also says what PicoDeck's latest
+// release was compared with (`since`).
+export function decide({ resolved, picodeck, release, rebuiltRelease }) {
   if (resolved.source !== 'release') {
     return { follow: false, reason: 'no-seam',
       why: `no PicoDeck release with the web build seam yet (${resolved.why})` };
@@ -104,12 +135,32 @@ export function decide({ resolved, picodeck, release }) {
       + `is not the resolved ${resolved.ref}`);
   }
   const picodeckAt = publishedAt('PicoDeck release', picodeck);
-  const webSimAt = publishedAt('web-sim release', release);
-  if (picodeckAt <= webSimAt) {
-    return { follow: false, reason: 'not-newer',
-      why: `PicoDeck's latest release ${resolved.ref} (published ${picodeck.published_at}) isn't newer than web-sim `
-        + `${release.tag_name} (published ${release.published_at}, built against ${built ?? 'an unrecorded ref'}): `
-        + "waiting for PicoDeck's next release" };
+  const rebuilt = rebuiltFor(release);
+  let sinceAt;
+  let since;
+  let against;
+  if (rebuilt !== null) {
+    if (!rebuiltRelease) {
+      throw new Error(`PicoDeck ${rebuilt}, which web-sim ${release.tag_name} was rebuilt for, wasn't found`);
+    }
+    if (rebuiltRelease.tag_name !== rebuilt) {
+      throw new Error(`the lookup of PicoDeck ${rebuilt} (which web-sim ${release.tag_name} was rebuilt for) `
+        + `returned ${rebuiltRelease.tag_name ?? 'no tag'}`);
+    }
+    sinceAt = publishedAt('PicoDeck release', rebuiltRelease);
+    since = `PicoDeck ${rebuilt} (published ${rebuiltRelease.published_at}), the release web-sim ${release.tag_name} `
+      + 'was rebuilt for';
+    against = since;
+  } else {
+    sinceAt = publishedAt('web-sim release', release);
+    since = `web-sim's latest release ${release.tag_name} (published ${release.published_at})`;
+    against = `web-sim ${release.tag_name} (published ${release.published_at}, `
+      + `built against ${built ?? 'an unrecorded ref'})`;
+  }
+  if (picodeckAt <= sinceAt) {
+    return { follow: false, reason: 'not-newer', since,
+      why: `PicoDeck's latest release ${resolved.ref} (published ${picodeck.published_at}) isn't newer than `
+        + `${against}: waiting for PicoDeck's next release` };
   }
   const builtWhy = built ? ` was built against ${built}` : "'s notes don't record a PicoDeck ref";
   return { follow: true, picodeck_ref: resolved.ref, next: bumpPatch(release.tag_name),
@@ -139,15 +190,19 @@ export async function latestWebSimRelease() {
 // CI build today"), with latestTag answered from the one picodeckLatest()
 // read, so the tag and its date come from the same release. webSimLatest:
 // web-sim's latest release lookup, only consulted once resolveRef succeeds.
+// picodeckRelease(tag): a PicoDeck release by tag ({ tag_name, published_at }
+// or null; github.releaseByTag in the CLI), only consulted when web-sim's
+// latest is a follow release decide() judges by date (rebuiltLookup).
 // expectTag: the tag PicoDeck dispatched, or empty (the schedule, a manual
 // run) to read latest once; sleep: waitForLatest's pause (tests pass one
 // that returns at once). No catch-all: any rejection here propagates,
 // uncaught. A dispatched release that isn't newer than web-sim's latest
-// release (one landed in between: by hand, or a build that was running when
-// PicoDeck released) rejects: not following it quietly would skip it until
-// PicoDeck's next release. Without a dispatched tag that is just "nothing to
-// do".
-export async function shouldFollow({ pin, picodeckLatest, cmakeAt, webSimLatest, expectTag = '', sleep }) {
+// release (one landed in between: by hand, or a hand or tag-push build that
+// was running when PicoDeck released) rejects: not following it quietly
+// would skip it until PicoDeck's next release. Without a dispatched tag that
+// is just "nothing to do".
+export async function shouldFollow({ pin, picodeckLatest, cmakeAt, webSimLatest, picodeckRelease, expectTag = '',
+  sleep }) {
   let latest;
   if (expectTag) {
     if (!PLAIN_TAG.test(expectTag)) {
@@ -159,11 +214,12 @@ export async function shouldFollow({ pin, picodeckLatest, cmakeAt, webSimLatest,
   }
   const resolved = await resolveRef({ explicit: '', pin, latestTag: async () => latest?.tag_name ?? null, cmakeAt });
   const release = await webSimLatest();
-  const d = decide({ resolved, picodeck: latest, release });
+  const rebuilt = rebuiltLookup({ resolved, release });
+  const rebuiltRelease = rebuilt === null ? undefined : await picodeckRelease(rebuilt);
+  const d = decide({ resolved, picodeck: latest, release, rebuiltRelease });
   if (expectTag && d.reason === 'not-newer') {
     throw new Error(`the dispatched PicoDeck ${expectTag} (published ${latest.published_at}) isn't newer than `
-      + `web-sim's latest release ${release.tag_name} (published ${release.published_at}): not following it. `
-      + `To build web-sim against ${expectTag}, release by hand`);
+      + `${d.since}: not following it. To build web-sim against ${expectTag}, release by hand`);
   }
   return d;
 }
@@ -171,7 +227,8 @@ export async function shouldFollow({ pin, picodeckLatest, cmakeAt, webSimLatest,
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const pin = readPin(readFileSync(new URL('../picodeck.pin', import.meta.url), 'utf8'));
   shouldFollow({ pin, picodeckLatest: github.latestRelease, cmakeAt: github.cmakeAt,
-    webSimLatest: latestWebSimRelease, expectTag: process.env.EXPECT_PICODECK_TAG ?? '' })
+    webSimLatest: latestWebSimRelease, picodeckRelease: github.releaseByTag,
+    expectTag: process.env.EXPECT_PICODECK_TAG ?? '' })
     .then((d) => {
       console.error(`should-follow: ${d.why}`);
       output(outputsOf(d));

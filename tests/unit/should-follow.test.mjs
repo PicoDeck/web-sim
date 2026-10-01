@@ -1,7 +1,8 @@
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bumpPatch, decide, outputsOf, shouldFollow } from '../../scripts/should-follow.mjs';
+import { bumpPatch, decide, outputsOf, rebuiltFor, shouldFollow } from '../../scripts/should-follow.mjs';
 import { github } from '../../scripts/picodeck-ref.mjs';
+import { releaseNotes } from '../../scripts/version.mjs';
 
 const WITH_SEAM = 'if(EMSCRIPTEN)\n  include(${PICODECK_WEB_DIR}/web.cmake)\n';
 const WITHOUT = 'if(EMSCRIPTEN)\n  set(SIM_PLATFORM_SOURCES web/web_platform.c)\n';
@@ -122,6 +123,126 @@ test('a release whose notes do not record a PicoDeck ref says so, not "built aga
   assert.equal(d.follow, true);
   assert.doesNotMatch(d.why, /built against null/);
   assert.match(d.why, /v1\.2\.3.*notes don't record a PicoDeck ref.*PicoDeck released v0\.6\.0/);
+});
+
+// A follow release: web-sim's latest release as follow-picodeck.yml
+// publishes it (publish.sh --rebuilt: releaseNotes with rebuilt), rebuilt
+// for PicoDeck `forRef`.
+const followRelease = (tag, forRef, published_at) => ({
+  tag_name: tag, published_at,
+  body: releaseNotes({ picodeck: { ref: forRef, commit: 'abcdef1234' }, apps: { builtin: [], store: [] } },
+    { rebuilt: true }),
+});
+// A follow release for v0.6.0 whose build ran while PicoDeck published
+// v0.7.0: published after v0.7.0, but built for the release before it.
+const OVERTAKEN = followRelease('v1.2.4', 'v0.6.0', '2026-09-20T10:30:00Z');
+
+test('rebuiltFor reads the PicoDeck ref a follow release was rebuilt for; null for any other release', () => {
+  assert.equal(rebuiltFor(OVERTAKEN), 'v0.6.0');
+  assert.equal(rebuiltFor({ ...OVERTAKEN, body: OVERTAKEN.body.replaceAll('\n', '\r\n') }), 'v0.6.0');
+  assert.equal(rebuiltFor(release('v1.2.3', 'v0.5.0')), null);
+  assert.equal(rebuiltFor({ tag_name: 'v1.2.3', body: null }), null);
+  assert.equal(rebuiltFor(null), null);
+});
+
+test('a follow release overtaken mid-build follows: judged by the PicoDeck release it was rebuilt for', () => {
+  const d = decide({ resolved: latest('v0.7.0'), picodeck: pd('v0.7.0'), release: OVERTAKEN, rebuiltRelease: pd('v0.6.0') });
+  assert.deepEqual({ ...d, why: undefined },
+    { follow: true, picodeck_ref: 'v0.7.0', next: 'v1.2.5', web_sim_ref: 'v1.2.4', why: undefined });
+});
+
+test('a follow release built for PicoDeck\'s current latest release does not follow', () => {
+  const d = decide({ resolved: latest('v0.7.0'), picodeck: pd('v0.7.0'),
+    release: followRelease('v1.2.5', 'v0.7.0', '2026-09-20T11:00:00Z') });
+  assert.equal(d.follow, false);
+  assert.equal(d.reason, 'built');
+});
+
+test('a follow release for a release newer than PicoDeck\'s latest does not follow, and says what it compared', () => {
+  // (PicoDeck's latest flag moved back to v0.6.0 after a v0.7.0 follow.)
+  const d = decide({ resolved: latest('v0.6.0'), picodeck: pd('v0.6.0'),
+    release: followRelease('v1.2.5', 'v0.7.0', '2026-09-20T11:00:00Z'), rebuiltRelease: pd('v0.7.0') });
+  assert.equal(d.follow, false);
+  assert.equal(d.reason, 'not-newer');
+  assert.match(d.why, /PicoDeck's latest release v0\.6\.0 \(published 2026-09-10T10:00:00Z\) isn't newer than PicoDeck v0\.7\.0 \(published 2026-09-20T10:00:00Z\), the release web-sim v1\.2\.5 was rebuilt for/);
+});
+
+test('a hand release against develop, published after PicoDeck\'s latest release, does not follow', () => {
+  const hand = release('v1.3.0', 'develop', '2026-09-21T10:00:00Z');
+  const d = decide({ resolved: latest('v0.7.0'), picodeck: pd('v0.7.0'), release: hand });
+  assert.equal(d.follow, false);
+  assert.equal(d.reason, 'not-newer');
+  assert.match(d.why, /isn't newer than web-sim v1\.3\.0 \(published 2026-09-21T10:00:00Z, built against develop\)/);
+});
+
+test('a follow release judged without its PicoDeck release, or with the wrong one, is an error, never a follow', () => {
+  for (const [rebuiltRelease, message] of [
+    [undefined, /PicoDeck v0\.6\.0, which web-sim v1\.2\.4 was rebuilt for, wasn't found/],
+    [null, /PicoDeck v0\.6\.0, which web-sim v1\.2\.4 was rebuilt for, wasn't found/],
+    [pd('v0.5.0'), /the lookup of PicoDeck v0\.6\.0 .*returned v0\.5\.0/],
+    [{ tag_name: 'v0.6.0' }, /PicoDeck release v0\.6\.0 has no valid published_at \(undefined\)/],
+    [pd('v0.6.0', 'last week'), /PicoDeck release v0\.6\.0 has no valid published_at \("last week"\)/],
+  ]) {
+    assert.throws(() => decide({ resolved: latest('v0.7.0'), picodeck: pd('v0.7.0'), release: OVERTAKEN, rebuiltRelease }),
+      message, JSON.stringify(rebuiltRelease));
+  }
+});
+
+// picodeckRelease(tag): PicoDeck's release by tag (github.releaseByTag in the
+// CLI), recording the tags looked up.
+function releasesByTag(answer = async (tag) => pd(tag)) {
+  const tags = [];
+  return { tags, picodeckRelease: async (tag) => { tags.push(tag); return answer(tag); } };
+}
+const notCalled = async () => { throw new Error('should not be called'); };
+
+test('shouldFollow follows a follow release overtaken mid-build, looking up the release it was rebuilt for', async () => {
+  // The schedule (or a manual run): no dispatched tag.
+  const gh = releasesByTag();
+  const d = await shouldFollow({
+    pin: 'abc123', picodeckLatest: async () => pd('v0.7.0'), cmakeAt: async () => WITH_SEAM,
+    webSimLatest: async () => OVERTAKEN, picodeckRelease: gh.picodeckRelease,
+  });
+  assert.deepEqual({ ...d, why: undefined },
+    { follow: true, picodeck_ref: 'v0.7.0', next: 'v1.2.5', web_sim_ref: 'v1.2.4', why: undefined });
+  assert.deepEqual(gh.tags, ['v0.6.0']);
+});
+
+test('a dispatched PicoDeck release that a follow overtook mid-build is followed, not failed', async () => {
+  const lag = lagging(['v0.7.0']);
+  const d = await shouldFollow({
+    pin: 'abc123', expectTag: 'v0.7.0', picodeckLatest: lag.picodeckLatest, sleep: lag.sleep,
+    cmakeAt: async () => WITH_SEAM, webSimLatest: async () => OVERTAKEN,
+    picodeckRelease: releasesByTag().picodeckRelease,
+  });
+  assert.equal(d.follow, true);
+  assert.equal(d.picodeck_ref, 'v0.7.0');
+});
+
+test('shouldFollow looks nothing up for a follow release built for the latest, or for a hand release', async () => {
+  for (const webSim of [followRelease('v1.2.5', 'v0.7.0', '2026-09-20T11:00:00Z'),
+    release('v1.3.0', 'develop', '2026-09-21T10:00:00Z')]) {
+    const d = await shouldFollow({
+      pin: 'abc123', picodeckLatest: async () => pd('v0.7.0'), cmakeAt: async () => WITH_SEAM,
+      webSimLatest: async () => webSim, picodeckRelease: notCalled,
+    });
+    assert.equal(d.follow, false, webSim.tag_name);
+  }
+});
+
+test('a failed lookup of the release a follow was rebuilt for rejects, never follows', async () => {
+  const run = (picodeckRelease, webSim = OVERTAKEN) => shouldFollow({
+    pin: 'abc123', picodeckLatest: async () => pd('v0.7.0'), cmakeAt: async () => WITH_SEAM,
+    webSimLatest: async () => webSim, picodeckRelease,
+  });
+  await assert.rejects(run(async () => { throw new Error('release v0.6.0: HTTP 503'); }), /HTTP 503/);
+  await assert.rejects(run(async () => null), /PicoDeck v0\.6\.0, which web-sim v1\.2\.4 was rebuilt for, wasn't found/);
+  await assert.rejects(run(async (tag) => pd(tag, null)), /PicoDeck release v0\.6\.0 has no valid published_at/);
+  // A rebuilt ref that isn't a release tag never reaches the lookup (it goes into a URL).
+  const gh = releasesByTag();
+  await assert.rejects(run(gh.picodeckRelease, followRelease('v1.2.4', 'x/../y', OVERTAKEN.published_at)),
+    /web-sim v1\.2\.4's notes say it was rebuilt for PicoDeck "x\/\.\.\/y", which is not a release tag/);
+  assert.deepEqual(gh.tags, []);
 });
 
 test('bumpPatch refuses a tag that is not vX.Y.Z', () => {
@@ -341,6 +462,16 @@ test('github.latestRelease gives the latest PicoDeck release\'s tag and publishe
   assert.deepEqual(await github.latestRelease(), { tag_name: 'v0.6.0', published_at: AT['v0.6.0'] });
   assert.deepEqual(urls, ['https://api.github.com/repos/PicoDeck/picodeck/releases/latest']);
   assert.equal(await github.latestTag(), 'v0.6.0');
+});
+
+test('github.releaseByTag gives a PicoDeck release\'s tag and published_at: null when there is none', async () => {
+  const urls = stubFetch(200, { tag_name: 'v0.6.0', published_at: AT['v0.6.0'], body: 'notes', assets: [] });
+  assert.deepEqual(await github.releaseByTag('v0.6.0'), { tag_name: 'v0.6.0', published_at: AT['v0.6.0'] });
+  assert.deepEqual(urls, ['https://api.github.com/repos/PicoDeck/picodeck/releases/tags/v0.6.0']);
+  stubFetch(404, { message: 'Not Found' });
+  assert.equal(await github.releaseByTag('v0.6.0'), null);
+  stubFetch(503, {});
+  await assert.rejects(github.releaseByTag('v0.6.0'), /release v0\.6\.0: HTTP 503/);
 });
 
 test('github.latestRelease: no release is null, any other failure throws', async () => {

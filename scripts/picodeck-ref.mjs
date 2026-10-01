@@ -59,8 +59,20 @@ async function latestRelease() {
   return { tag_name, published_at };
 }
 
+// A PicoDeck release by its tag: { tag_name, published_at }, or null when
+// there is none. should-follow.mjs judges a follow release by the date of the
+// PicoDeck release it was rebuilt for.
+async function releaseByTag(tag) {
+  const res = await get(`https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`release ${tag}: HTTP ${res.status}`);
+  const { tag_name, published_at } = await res.json();
+  return { tag_name, published_at };
+}
+
 export const github = {
   latestRelease,
+  releaseByTag,
   async latestTag() {
     return (await latestRelease())?.tag_name ?? null;
   },
