@@ -14,8 +14,22 @@ export const SEAM = 'PICODECK_WEB_DIR';
 // ref's simulator/CMakeLists.txt. source is 'requested', 'release' or 'pin':
 // should-follow.mjs's decide() tells a real new release apart from a fallback
 // by source, never by parsing why.
+// A command-line ref (a branch, tag or commit SHA) is safe to hand to git and
+// to GitHub's API: reject what git's own ref-name rules forbid, plus a
+// leading '-' (so it can never be read as an option).
+const FORBIDDEN_REF_CHARS = /[\s~^:?*[\\]/;
+export function validateRef(ref) {
+  if (!ref) throw new Error('ref is empty');
+  if (ref.startsWith('-')) throw new Error(`ref ${JSON.stringify(ref)} starts with '-' (looks like an option)`);
+  if (ref.includes('..')) throw new Error(`ref ${JSON.stringify(ref)} contains '..'`);
+  if (FORBIDDEN_REF_CHARS.test(ref)) {
+    throw new Error(`ref ${JSON.stringify(ref)} contains a character git forbids in ref names`);
+  }
+  return ref;
+}
+
 export async function resolveRef({ explicit, pin, latestTag, cmakeAt }) {
-  if (explicit) return { ref: explicit, source: 'requested', why: 'requested' };
+  if (explicit) return { ref: validateRef(explicit), source: 'requested', why: 'requested' };
   const tag = await latestTag();
   if (tag && (await cmakeAt(tag)).includes(SEAM)) return { ref: tag, source: 'release', why: `latest release ${tag}` };
   if (!pin) throw new Error(`the latest release (${tag ?? 'none'}) predates the web build seam and picodeck.pin is empty`);
