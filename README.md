@@ -44,17 +44,45 @@ or `PICODECK=...`).
   web build seam (else `picodeck.pin`), runs the tests and publishes
   `picodeck-web-sim.zip` (with `version.json`: this version, the PicoDeck ref
   and commit, the apps and their versions).
+- Or release by hand against a chosen PicoDeck ref: run `release` from the
+  Actions tab, on `main`, with `version` (the next `vX.Y.Z`; its tag must not
+  exist yet, and is created on the commit the run starts from) and
+  `picodeck_ref` (a PicoDeck tag, branch or commit; empty = the usual ref).
+  Use it when a PicoDeck release breaks the web build in a way only PicoDeck
+  can fix and web-sim still needs to release (build against the previous
+  PicoDeck release or a fixed commit), or to put a PicoDeck develop commit on
+  the demo early. The notes record that ref, and the follow (below) rebuilds
+  whenever that ref isn't PicoDeck's latest release, not only when PicoDeck
+  releases again: its next run (at the latest, the daily check) rebuilds this
+  release against PicoDeck's latest. While that release breaks the build, the
+  run fails each day and publishes nothing; once it passes, it replaces a
+  develop build. To keep a develop build up until PicoDeck's next release,
+  disable `follow-picodeck` in the Actions tab until then.
 - When PicoDeck releases, `follow-picodeck.yml` rebuilds the latest web-sim
   release's commit against it and, if the tests pass, publishes that as the
   next patch version, tagged on the same commit. A follow release never ships
   unreleased work from `main`: if PicoDeck's change needs web-sim work that
-  isn't released yet, the follow run fails and you release by hand (push the
-  next `vX.Y.Z` tag). PicoDeck's release workflow sends `picodeck-release`, with
-  its tag, when its `WEB_SIM_DISPATCH_TOKEN` secret is set; a daily check
-  covers it otherwise. A dispatched run waits up to a minute for GitHub's
-  latest PicoDeck release to be that tag, and fails if it never is.
+  isn't released yet, the follow run fails and you release by hand. It waits
+  for the first hand-made release: until web-sim has a release, and a
+  PicoDeck release has the web build seam, it does nothing. PicoDeck's
+  release workflow sends `picodeck-release`, with its tag, when its
+  `WEB_SIM_DISPATCH_TOKEN` secret is set; a daily check covers it otherwise.
+  A dispatched run reads GitHub's latest PicoDeck release up to six times,
+  10 s apart, until it is the dispatched tag, then decides on that tag; if it
+  never is (GitHub is slow, or a later release came out), the run fails and
+  publishes nothing, and the daily check follows whatever is latest.
+- A follow runs `main`'s `build.yml` on the release's files (its scripts,
+  Makefile and tests), and the release's `publish.sh`: a change to
+  `build.yml` that needs newer scripts makes follows fail, safely, until the
+  next release has those scripts.
+- Run `ci` from the Actions tab with a `picodeck_ref` to build and test
+  against an unreleased PicoDeck (a branch or commit): the zip is the run's
+  artifact; nothing is published.
 - `nightly-develop.yml` builds and tests against PicoDeck's develop every night.
 - A release rebuilds picodeck.net when the `PAGES_DEPLOY_HOOK` secret is set.
+  If that fails after the release is published, re-running the release job is
+  refused (the release exists): run `redeploy-site` from the Actions tab,
+  which calls the hook again.
 - GitHub turns off a public repo's scheduled workflows (the daily check,
   `nightly-develop.yml`) after 60 days with no repository activity;
   re-enable them from the Actions tab when that happens. PicoDeck's
