@@ -53,6 +53,10 @@ function screenNotBlank() {
 // printf("[LAUNCHER] Found %d apps")), whether or not it then auto-launches
 // an app: page/shell.js routes stdout to console.log.
 const LAUNCHER_FOUND_RE = /\[LAUNCHER\] Found \d+ apps/;
+// What a Lua error prints to the console too (src/os/crashlog.c's
+// crashlog_write, always called by lua_bridge_show_error / a launch
+// failure): "[LUA ERROR] <app>: <context>: <message> (<heap>)".
+const LUA_ERROR_RE = /\[LUA ERROR\]/;
 
 // The launcher has started: its boot line reached the console and the
 // screen has drawn something. No pixel-colour dependency, so a launcher
@@ -100,7 +104,7 @@ test('boots to the launcher and captures it @release', async ({ page }) => {
 
 for (const app of ALL_APPS) {
   test(`${app} starts without a Lua error @release`, async ({ page }) => {
-    const { errors } = await boot(page, `?app=${app}`);
+    const { errors, consoleLines } = await boot(page, `?app=${app}`);
     // Wait until the launcher has started the app, then give it time to load
     // and draw: it must still be running (running.txt is gone once the
     // launcher is back, so this doesn't depend on any screen pixel).
@@ -108,6 +112,7 @@ for (const app of ALL_APPS) {
     await page.waitForTimeout(2000);
     expect(await page.evaluate(fileExists, RUNNING)).toBe(true);
     expect(await page.evaluate(fileText, '/sd/system/error.log')).toBeNull();
+    expect(consoleLines.some((l) => LUA_ERROR_RE.test(l)), consoleLines.join('\n')).toBe(false);
     expect(distinctColours(await page.evaluate(screenOf))).toBeGreaterThan(1);
     expect(errors).toEqual([]);
   });
