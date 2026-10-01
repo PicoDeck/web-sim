@@ -40,10 +40,12 @@ or `PICODECK=...`).
 
 ## Releases
 
-- Push a `vX.Y.Z` tag: CI builds against PicoDeck's latest release with the
-  web build seam (else `picodeck.pin`), runs the tests and publishes
-  `picodeck-web-sim.zip` (with `version.json`: this version, the PicoDeck ref
-  and commit, the apps and their versions).
+- Push a `vX.Y.Z` tag: CI checks it is greater than web-sim's latest release
+  (before the build: a lower tag would become "latest" and roll picodeck.net
+  back), builds against PicoDeck's latest release with the web build seam
+  (else `picodeck.pin`), runs the tests and publishes `picodeck-web-sim.zip`
+  (with `version.json`: this version, the PicoDeck ref and commit, the apps
+  and their versions).
 - Or release by hand against a chosen PicoDeck ref: run `release` from the
   Actions tab on `main` (a run on another branch is refused) with `version` (a
   `vX.Y.Z` greater than the latest release, whose tag doesn't exist yet: both

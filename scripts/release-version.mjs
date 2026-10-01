@@ -15,10 +15,14 @@
 // during the follow would otherwise be overtaken by the follow's lower
 // version), and the version must still be new and greater than it.
 //   node scripts/release-version.mjs v1.0.2 --follow v1.0.1
+// With --pushed (release.yml's tag-push path) it checks a pushed tag: its
+// tag exists by definition, so that lookup is skipped, but it must still be
+// vX.Y.Z and greater than web-sim's latest release (a mistyped lower tag
+// would otherwise publish, become "latest" and roll picodeck.net back).
+//   node scripts/release-version.mjs v1.2.0 --pushed
 // Prints version= (and appends it to $GITHUB_OUTPUT in CI). Read-only
 // lookups (GITHUB_TOKEN needs only contents: read); a failed lookup is an
-// error, never a pass. A pushed tag (release.yml's other path) isn't checked
-// here: its tag exists by definition.
+// error, never a pass.
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { output } from './picodeck-ref.mjs';
@@ -68,11 +72,14 @@ export function checkFollow({ version, rebuilt, latest, tagExists }) {
 
 // latestTag(), tagExists(tag): the lookups (webSim in the CLI); follows: a
 // follow's web_sim_ref, or undefined for a manual release (an empty one is
-// an error, never the manual check). The formats are checked first, before
-// any lookup: the version goes into a URL.
-export async function checkRelease({ version, follows, latestTag, tagExists }) {
+// an error, never the manual check); pushed: a pushed tag (no tag-exists
+// lookup: it exists). The formats are checked first, before any lookup: the
+// version goes into a URL.
+export async function checkRelease({ version, follows, pushed = false, latestTag, tagExists }) {
+  if (pushed && follows !== undefined) throw new Error("--pushed and --follow can't be combined");
   parse(version, 'version');
   if (follows !== undefined) parse(follows, 'the rebuilt release');
+  if (pushed) return checkVersion({ version, latest: await latestTag(), tagExists: false });
   const [latest, exists] = await Promise.all([latestTag(), tagExists(version)]);
   return follows !== undefined
     ? checkFollow({ version, rebuilt: follows, latest, tagExists: exists })
@@ -96,16 +103,17 @@ export const webSim = {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // In Actions, an ::error:: line puts the reason on the run's summary.
   const error = process.env.GITHUB_ACTIONS === 'true' ? '::error::' : '';
-  const usage = 'usage: scripts/release-version.mjs <version> [--follow <web-sim release>]';
+  const usage = 'usage: scripts/release-version.mjs <version> [--follow <web-sim release> | --pushed]';
   let args;
   try {
-    args = parseArgs({ options: { follow: { type: 'string' } }, allowPositionals: true });
+    args = parseArgs({ options: { follow: { type: 'string' }, pushed: { type: 'boolean' } }, allowPositionals: true });
     if (args.positionals.length !== 1) throw new Error(`expected one version, got ${args.positionals.length}`);
+    if (args.values.pushed && args.values.follow !== undefined) throw new Error("--pushed and --follow can't be combined");
   } catch (err) {
     console.error(`${error}release-version: ${err.message}\n${usage}`);
     process.exit(1);
   }
-  checkRelease({ version: args.positionals[0], follows: args.values.follow, ...webSim })
+  checkRelease({ version: args.positionals[0], follows: args.values.follow, pushed: args.values.pushed, ...webSim })
     .then((version) => output({ version }))
     .catch((err) => { console.error(`${error}release-version: ${err.message}`); process.exit(1); });
 }

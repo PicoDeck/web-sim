@@ -1,5 +1,6 @@
 // scripts/release-version.mjs: release.yml's check of a manual run's
-// version, before the build.
+// version (and of a pushed tag's) before the build, and follow-picodeck.yml's
+// check of a follow release before it publishes.
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -119,6 +120,42 @@ test('checkRelease with follows checks the follow, and refuses a malformed rebui
   assert.deepEqual(gh.calls, []);
 });
 
+// A pushed tag (release.yml's push path, --pushed): its tag exists by
+// definition, so only the version is checked: vX.Y.Z and greater than
+// web-sim's latest release, or a mistyped lower tag would publish, become
+// "latest" and roll picodeck.net back.
+test('a pushed tag above web-sim\'s latest release passes, without the tag-exists lookup', async () => {
+  const gh = lookups({ exists: true });  // the pushed tag exists: that must not matter
+  assert.equal(await checkRelease({ version: 'v1.1.0', pushed: true, ...gh }), 'v1.1.0');
+  assert.deepEqual(gh.calls, [['latestTag']]);
+});
+
+test('a pushed tag not greater than web-sim\'s latest release is refused', async () => {
+  for (const version of ['v1.0.0', 'v1.0.1', 'v0.9.10']) {
+    await assert.rejects(checkRelease({ version, pushed: true, ...lookups({ latest: 'v1.0.1' }) }),
+      new RegExp(`${version.replaceAll('.', '\\.')} is not greater than web-sim's latest release v1\\.0\\.1`), version);
+  }
+});
+
+test('a pushed tag with no web-sim release yet passes', async () => {
+  assert.equal(await checkRelease({ version: 'v1.0.0', pushed: true, ...lookups({ latest: null }) }), 'v1.0.0');
+});
+
+test('a pushed tag that is not vX.Y.Z is refused before any lookup, and a failed lookup is an error', async () => {
+  const gh = lookups();
+  await assert.rejects(checkRelease({ version: 'v1.2', pushed: true, ...gh }), /version "v1\.2" is not vX\.Y\.Z/);
+  assert.deepEqual(gh.calls, []);
+  const fail = () => { throw new Error('HTTP 503'); };
+  await assert.rejects(checkRelease({ version: 'v1.1.0', pushed: true, ...lookups({ latest: fail }) }), /HTTP 503/);
+});
+
+test('pushed and follows together are refused before any lookup', async () => {
+  const gh = lookups();
+  await assert.rejects(checkRelease({ version: 'v1.0.2', follows: 'v1.0.1', pushed: true, ...gh }),
+    /--pushed and --follow can't be combined/);
+  assert.deepEqual(gh.calls, []);
+});
+
 // webSim: the CLI's GitHub lookups (a stubbed fetch stands in for the API).
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -167,15 +204,27 @@ test('an empty --follow is an error, not a fall back to the manual check', () =>
   assert.match(r.stderr, /the rebuilt release "" is not vX\.Y\.Z/);
 });
 
-test('the CLI refuses an unknown option, a missing --follow value, or not exactly one version', () => {
-  for (const args of [['v1.0.2', '--folow', 'v1.0.1'], ['v1.0.2', '--follow'], ['v1.0.2', 'v1.0.3'], []]) {
+test('the CLI refuses an unknown option, a missing --follow value, --pushed with --follow, or not exactly one version', () => {
+  for (const args of [['v1.0.2', '--folow', 'v1.0.1'], ['v1.0.2', '--follow'], ['v1.0.2', 'v1.0.3'], [],
+    ['v1.0.2', '--pushed', '--follow', 'v1.0.1'], ['v1.0.2', '--pushed=yes']]) {
     const r = spawnSync(process.execPath, [SCRIPT, ...args], {
       encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_OUTPUT: '' },
     });
     assert.equal(r.status, 1, JSON.stringify(args));
-    assert.match(r.stderr, /^release-version: .*\nusage: scripts\/release-version\.mjs <version> \[--follow <web-sim release>\]/,
+    assert.match(r.stderr,
+      /^release-version: .*\nusage: scripts\/release-version\.mjs <version> \[--follow <web-sim release> \| --pushed\]/,
       JSON.stringify(args));
+    assert.equal(r.stdout, '', JSON.stringify(args));
   }
+});
+
+test('the CLI takes --pushed, and refuses a malformed pushed tag before any lookup', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, 'v1.2', '--pushed'], {
+    encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_OUTPUT: '' },
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^::error::release-version: version "v1\.2" is not vX\.Y\.Z/);
+  assert.equal(r.stdout, '');
 });
 
 test('the CLI refuses a malformed version with a clear error and writes no output', () => {
