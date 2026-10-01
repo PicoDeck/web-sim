@@ -1,20 +1,36 @@
 #!/usr/bin/env bash
-# Publishes <repo root>/picodeck-web-sim.zip as web-sim release $1, with notes
-# from its version.json. $2 (optional) is the commit to tag
-# (follow-picodeck.yml, which also marks the notes "Rebuilt for PicoDeck
-# <ref>" via --rebuilt); a pushed tag (release.yml) passes none. Works from
-# any directory: the zip and repo root are found from this script's own path,
-# never from $PWD. Never overwrites: it refuses a tag that already has a
-# release and, given a target, a tag that already exists (gh release create
-# would ignore --target and attach the zip to that tag). Also refuses to
-# publish a zip whose version.json disagrees with the tag being published
-# (the usual cause: a workflow forgot to set WEB_SIM_VERSION) -- read with
-# scripts/zip-version.mjs (fflate, the same as notes.mjs; no unzip binary).
+# Publishes <repo root>/picodeck-web-sim.zip as web-sim release <tag>, with
+# notes from its version.json.
+#   scripts/publish.sh <tag> [<target commit>] [--rebuilt]
+# <target commit> (optional) is the commit to tag: follow-picodeck.yml and a
+# manual release.yml run pass one; a pushed tag (release.yml) passes none.
+# --rebuilt (follow-picodeck.yml only) adds "Rebuilt for PicoDeck <ref>." to
+# the notes; a target alone does not, so a manual release's notes have no
+# such line. Works from any directory: the zip and repo root are found from
+# this script's own path, never from $PWD. Never overwrites: it refuses a tag
+# that already has a release and, given a target, a tag that already exists
+# (gh release create would ignore --target and attach the zip to that tag).
+# Also refuses to publish a zip whose version.json disagrees with the tag
+# being published (the usual cause: a workflow forgot to set WEB_SIM_VERSION)
+# -- read with scripts/zip-version.mjs (fflate, the same as notes.mjs; no
+# unzip binary).
 set -euo pipefail
-usage="usage: scripts/publish.sh <tag> [<target commit>]"
-if [ $# -lt 1 ] || [ -z "$1" ]; then echo "$usage" >&2; exit 1; fi
-tag="$1"
-target="${2:-}"
+usage="usage: scripts/publish.sh <tag> [<target commit>] [--rebuilt]"
+rebuilt=false
+positional=()
+for arg in "$@"; do
+  case "$arg" in
+    --rebuilt) rebuilt=true ;;
+    -*) echo "publish: unknown option $arg" >&2; echo "$usage" >&2; exit 1 ;;
+    *) positional+=("$arg") ;;
+  esac
+done
+if [ ${#positional[@]} -lt 1 ] || [ ${#positional[@]} -gt 2 ] || [ -z "${positional[0]}" ]; then
+  echo "$usage" >&2
+  exit 1
+fi
+tag="${positional[0]}"
+target="${positional[1]:-}"
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 zip="$root/picodeck-web-sim.zip"
@@ -53,7 +69,7 @@ if [ -n "$target" ] && found api "repos/{owner}/{repo}/git/ref/tags/$tag"; then
 fi
 
 notes_args=("$zip")
-if [ -n "$target" ]; then notes_args+=(--rebuilt); fi
+if [ "$rebuilt" = true ]; then notes_args+=(--rebuilt); fi
 notes="$(node "$here/notes.mjs" "${notes_args[@]}")"
 args=(release create "$tag" "$zip" --title "$tag" --notes "$notes")
 if [ -n "$target" ]; then args+=(--target "$target"); fi

@@ -72,11 +72,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: web-sim
+      # --rebuilt adds "Rebuilt for PicoDeck <ref>." to the notes. This is the
+      # release's own publish.sh; one older than the flag ignores it and adds
+      # the line anyway (it did so for any target).
       - name: Publish ${{ needs.check.outputs.next }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.check.outputs.next }}
-        run: scripts/publish.sh "$TAG" "$(git rev-parse HEAD)"
+        run: scripts/publish.sh "$TAG" "$(git rev-parse HEAD)" --rebuilt
       - name: Rebuild picodeck.net
         if: env.HAVE_PAGES_HOOK == 'true'
         env:

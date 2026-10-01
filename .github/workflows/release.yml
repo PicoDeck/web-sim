@@ -1,22 +1,62 @@
 # A pushed vX.Y.Z tag: build and test against the latest PicoDeck release,
 # publish picodeck-web-sim.zip, and rebuild picodeck.net.
+#
+# Run by hand (Actions > release > Run workflow) to release against a chosen
+# PicoDeck ref: `version` is the new vX.Y.Z (its tag must not exist yet:
+# publish.sh creates it on the commit the run was dispatched from) and
+# `picodeck_ref` a PicoDeck tag, branch or commit (empty = the usual
+# resolution: the latest release with the web build seam, else picodeck.pin).
 name: release
 
 on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The web-sim version to release, vX.Y.Z (a new tag, created on this run's commit)
+        type: string
+        required: true
+      picodeck_ref:
+        description: PicoDeck tag, branch or commit to build against (empty = the latest release with the web build seam, else picodeck.pin)
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
 jobs:
+  # The version being released: the pushed tag, or a manual run's input,
+  # checked before the build so a mistyped version fails in seconds.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Check the version
+        id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then version="$INPUT_VERSION"; else version="$TAG"; fi
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version '$version' is not vX.Y.Z (for example v1.2.0)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: version
     uses: ./.github/workflows/build.yml
     with:
-      web_sim_version: ${{ github.ref_name }}
+      web_sim_version: ${{ needs.version.outputs.version }}
+      picodeck_ref: ${{ inputs.picodeck_ref || '' }}
 
   release:
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -35,10 +75,21 @@ jobs:
         with:
           name: web-sim
       - name: Publish
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: scripts/publish.sh "$TAG"
+      # A manual run tags the commit it was dispatched from (and built: the
+      # build's checkout is the same github.sha). No --rebuilt: it is not a
+      # follow release. publish.sh refuses an existing release or tag.
+      - name: Publish ${{ needs.version.outputs.version }} on ${{ github.sha }}
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.version }}
+          TARGET: ${{ github.sha }}
+        run: scripts/publish.sh "$TAG" "$TARGET"
       - name: Rebuild picodeck.net
         if: env.HAVE_PAGES_HOOK == 'true'
         env:

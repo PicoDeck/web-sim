@@ -85,8 +85,17 @@ const creates = (calls) => calls.filter((c) => c[0] === 'release' && c[1] === 'c
 test('no tag: prints the usage and calls nothing', () => {
   const r = publish('fresh', []);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /usage: scripts\/publish\.sh <tag> \[<target commit>\]/);
+  assert.match(r.stderr, /usage: scripts\/publish\.sh <tag> \[<target commit>\] \[--rebuilt\]/);
   assert.deepEqual(r.calls, []);
+});
+
+test('an unknown option or a third argument prints the usage and calls nothing', () => {
+  for (const args of [['v1.0.1', '--rebuild'], ['v1.0.1', TARGET, 'extra'], ['--rebuilt']]) {
+    const r = publish('fresh', args);
+    assert.equal(r.status, 1, JSON.stringify(args));
+    assert.match(r.stderr, /usage: scripts\/publish\.sh/);
+    assert.deepEqual(r.calls, []);
+  }
 });
 
 test('an existing release is never overwritten', () => {
@@ -124,7 +133,7 @@ test('a pushed tag (no target) publishes its release on that tag', () => {
   assert.doesNotMatch(notes, /Rebuilt for/);
 });
 
-test('a follow release creates the tag on the target commit, with the Rebuilt for line', () => {
+test('a manual release (a target, no --rebuilt) creates the tag on the target commit, with no Rebuilt for line', () => {
   const r = publish('fresh', ['v1.0.1', TARGET]);
   assert.equal(r.status, 0, r.stderr);
   const [create, ...more] = creates(r.calls);
@@ -132,7 +141,28 @@ test('a follow release creates the tag on the target commit, with the Rebuilt fo
   const notes = create[create.indexOf('--notes') + 1];
   assert.deepEqual(create, ['release', 'create', 'v1.0.1', r.zip,
     '--title', 'v1.0.1', '--notes', notes, '--target', TARGET]);
-  assert.match(notes, /^Built against PicoDeck v0\.6\.0 \(abcdef1\)\.\nRebuilt for PicoDeck v0\.6\.0\.\n/);
+  assert.match(notes, /^Built against PicoDeck v0\.6\.0 \(abcdef1\)\.\n/);
+  assert.doesNotMatch(notes, /Rebuilt for/);
+});
+
+test('a follow release (a target and --rebuilt) creates the tag on the target commit, with the Rebuilt for line', () => {
+  for (const args of [['v1.0.1', TARGET, '--rebuilt'], ['--rebuilt', 'v1.0.1', TARGET]]) {
+    const r = publish('fresh', args);
+    assert.equal(r.status, 0, r.stderr);
+    const [create, ...more] = creates(r.calls);
+    assert.deepEqual(more, []);
+    const notes = create[create.indexOf('--notes') + 1];
+    assert.deepEqual(create, ['release', 'create', 'v1.0.1', r.zip,
+      '--title', 'v1.0.1', '--notes', notes, '--target', TARGET]);
+    assert.match(notes, /^Built against PicoDeck v0\.6\.0 \(abcdef1\)\.\nRebuilt for PicoDeck v0\.6\.0\.\n/);
+  }
+});
+
+test('--rebuilt with a target still refuses an existing tag', () => {
+  const r = publish('tag', ['v1.0.1', TARGET, '--rebuilt']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /tag v1\.0\.1 already exists/);
+  assert.deepEqual(creates(r.calls), []);
 });
 
 test('works from another directory: the zip is resolved from the script path, not cwd', () => {

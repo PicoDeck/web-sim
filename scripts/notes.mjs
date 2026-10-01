@@ -2,7 +2,7 @@
 // Prints the release notes for a packaged zip, from its version.json.
 //   node scripts/notes.mjs picodeck-web-sim.zip [--rebuilt]
 // --rebuilt (a follow release) adds "Rebuilt for PicoDeck <ref>."; publish.sh
-// passes it when it is given a target commit.
+// passes it on when it is given --rebuilt itself (follow-picodeck.yml does).
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { unzipSync, strFromU8 } from 'fflate';
