@@ -48,12 +48,21 @@ async function get(url) {
   return fetch(url, { headers });
 }
 
+// PicoDeck's latest release: { tag_name, published_at }, or null when it has
+// none. should-follow.mjs needs the date (it follows only a PicoDeck release
+// published after web-sim's latest); resolveRef needs only the tag.
+async function latestRelease() {
+  const res = await get(`https://api.github.com/repos/${REPO}/releases/latest`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`latest release: HTTP ${res.status}`);
+  const { tag_name, published_at } = await res.json();
+  return { tag_name, published_at };
+}
+
 export const github = {
+  latestRelease,
   async latestTag() {
-    const res = await get(`https://api.github.com/repos/${REPO}/releases/latest`);
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`latest release: HTTP ${res.status}`);
-    return (await res.json()).tag_name;
+    return (await latestRelease())?.tag_name ?? null;
   },
   async cmakeAt(ref) {
     const res = await get(`https://raw.githubusercontent.com/${REPO}/${ref}/simulator/CMakeLists.txt`);
