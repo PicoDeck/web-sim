@@ -1,0 +1,25 @@
+# Rebuilds picodeck.net by hand: POSTs to the PAGES_DEPLOY_HOOK secret, the
+# same hook release.yml and follow-picodeck.yml call after publishing. For
+# when that call failed after publish.sh succeeded: re-running the release
+# job is refused (the release exists), so this is the way to retry it.
+name: redeploy-site
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  redeploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rebuild picodeck.net
+        env:
+          PAGES_DEPLOY_HOOK: ${{ secrets.PAGES_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$PAGES_DEPLOY_HOOK" ]; then
+            echo "::error::The PAGES_DEPLOY_HOOK secret is not set: there is no deploy hook to call"
+            exit 1
+          fi
+          curl -fsS -X POST "$PAGES_DEPLOY_HOOK"
+          echo
