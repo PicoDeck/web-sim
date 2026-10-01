@@ -62,6 +62,10 @@ async function boot(page, query = '') {
   const consoleLines = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (msg) => consoleLines.push(msg.text()));
+  // Never let a test depend on the live site: page/shell.html loads
+  // brand.css and a font from picodeck.net.
+  await page.route('https://picodeck.net/**',
+    (route) => route.fulfill({ status: 200, contentType: 'text/plain', body: '' }));
   await page.goto(PAGE + query);
   await page.waitForFunction(() => typeof Module !== 'undefined'
     && typeof Module._web_screen === 'function' && Module.HEAPU16, null, { timeout: 30_000 });
