@@ -1,6 +1,8 @@
-# Every push and pull request: unit tests, then build and test against the
-# latest PicoDeck release. Run it by hand with a PicoDeck ref to try an
-# unreleased firmware (the artifact is the page; nothing is published).
+# Every push (any branch) and every pull request from a fork: unit tests,
+# then build and test against the latest PicoDeck release. A pull request
+# from a branch in this repo is not built again: its push already was. Run
+# it by hand with a PicoDeck ref to try an unreleased firmware (the artifact
+# is the page; nothing is published).
 name: ci
 
 on:
@@ -19,6 +21,9 @@ permissions:
 
 jobs:
   unit:
+    # A pull_request run only for a fork's pull request; build needs unit,
+    # so it is skipped with it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
