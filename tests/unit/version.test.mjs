@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appVersion, releaseNotes, releaseTag, versionInfo } from '../../scripts/version.mjs';
@@ -16,8 +16,9 @@ test('releaseTag reads the tag out of a release-download URL', () => {
   assert.equal(releaseTag('https://example.test/a.zip'), null);
 });
 
-test('appVersion reads a PicoDeck app.json, or null', () => {
+test('appVersion reads a PicoDeck app.json, or null', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'pd-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'apps', 'snake'), { recursive: true });
   writeFileSync(join(root, 'apps', 'snake', 'app.json'), '{"version":"1.2.0"}');
   assert.equal(appVersion(root, 'snake'), '1.2.0');

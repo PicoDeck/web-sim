@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,8 +9,13 @@ import { notesFromZip } from '../../scripts/notes.mjs';
 
 const INFO = { web_sim: 'v1.0.0', picodeck: { ref: 'v0.5.0', commit: 'abcdef1234' }, apps: { builtin: [], store: [] } };
 
+// Every fakeBuild(), removed once all tests in this file have run.
+const tmpDirs = [];
+after(() => { for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true }); });
+
 function fakeBuild() {
   const dir = mkdtempSync(join(tmpdir(), 'build-'));
+  tmpDirs.push(dir);
   for (const file of Object.values(FILES)) writeFileSync(join(dir, file), file);
   return dir;
 }

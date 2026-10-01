@@ -1,9 +1,9 @@
 // scripts/publish.sh against a fake gh (first on PATH): FAKE_GH picks what
 // GitHub reports, and the fake records each call's arguments to FAKE_GH_LOG.
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,10 @@ const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const SCRIPTS_DIR = join(REPO_ROOT, 'scripts');
 const INFO = { web_sim: 'v1.0.1', picodeck: { ref: 'v0.6.0', commit: 'abcdef1234' }, apps: { builtin: [], store: [] } };
 const TARGET = '0123456789abcdef0123456789abcdef01234567';
+
+// Every scratch(), removed once all tests in this file have run.
+const tmpDirs = [];
+after(() => { for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true }); });
 
 // FAKE_GH: 'fresh' (no release, no tag), 'tag' (the tag exists, no release),
 // 'release' (the release exists) or 'error' (every lookup fails with HTTP 503).
@@ -41,6 +45,7 @@ fail('fake gh: unexpected call ' + JSON.stringify(args));
 // notes.mjs can still resolve fflate) and the fake gh in bin/.
 function scratch(info = INFO) {
   const dir = mkdtempSync(join(tmpdir(), 'publish-'));
+  tmpDirs.push(dir);
   const build = join(dir, 'build');
   const scriptsDir = join(dir, 'scripts');
   mkdirSync(build, { recursive: true });
