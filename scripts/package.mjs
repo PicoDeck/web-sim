@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { zipSync, strToU8 } from 'fflate';
-import { appVersion, versionInfo } from './version.mjs';
+import { appVersion, releaseTag, versionInfo } from './version.mjs';
 
 export const FILES = {
   'index.html': 'picodeck_simulator.html',
@@ -40,6 +40,17 @@ function fixtureAppNames() {
 }
 
 const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+
+// A store app's own version, from the app.json web.cmake extracted into the
+// build at web_sd/apps/<dir>; null if the build doesn't have it (versionInfo
+// then falls back to the app's release tag).
+export function storeAppVersion(build, dir) {
+  try {
+    return JSON.parse(readFileSync(join(build, 'web_sd', 'apps', dir, 'app.json'), 'utf8')).version ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // A checkout's tag when it sits exactly on one, else its short commit.
 function refOf(dir) {
@@ -98,6 +109,7 @@ function main() {
     },
     apps,
     builtinVersion: (dir) => appVersion(values.picodeck, dir),
+    storeVersion: (a) => storeAppVersion(values.build, a.dir) ?? releaseTag(a.url),
   });
   writeFileSync(values.out, packageBuild({ build: values.build, info }));
   console.log(`${values.out}: web-sim ${info.web_sim}, PicoDeck ${info.picodeck.ref}`);

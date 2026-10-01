@@ -34,14 +34,37 @@ test('versionInfo records the versions of everything in the build', () => {
   });
 });
 
+test('versionInfo prefers a store app\'s own app.json version when the build has it', () => {
+  const info = versionInfo({ webSim: 'v1.0.0', picodeck: { ref: 'v0.5.0', commit: 'abcdef1234' },
+    apps: APPS, builtinVersion: () => '1.2.0', storeVersion: () => '1.0.3' });
+  assert.deepEqual(info.apps.store, [{ dir: 'blockexe', version: '1.0.3' }]);
+});
+
 test('the notes say what PicoDeck the release was built against, readably back', () => {
   const info = versionInfo({ webSim: 'v1.0.0', picodeck: { ref: 'v0.5.0', commit: 'abcdef1234' },
     apps: APPS, builtinVersion: () => '1.2.0' });
   const notes = releaseNotes(info);
   assert.match(notes, /^Built against PicoDeck v0\.5\.0 \(abcdef1\)\./);
-  assert.match(notes, /- blockexe v1\.0\.3/);
+  assert.match(notes, /- blockexe 1\.0\.3/);
   assert.equal(builtAgainst({ body: notes }), 'v0.5.0');
   assert.doesNotMatch(notes, /Rebuilt for/);
+});
+
+test('releaseNotes prints every app\'s version the same way, with no leading v', () => {
+  const info = versionInfo({ webSim: 'v1.0.0', picodeck: { ref: 'v0.5.0', commit: 'abcdef1234' },
+    apps: APPS, builtinVersion: () => '1.2.0', storeVersion: () => '1.0.3' });
+  const notes = releaseNotes(info);
+  assert.match(notes, /- snake 1\.2\.0/);
+  assert.match(notes, /- blockexe 1\.0\.3/);
+  assert.doesNotMatch(notes, /\bv1\.0\.3/);
+});
+
+test('releaseNotes strips a leading v when a store app\'s app.json version was not available', () => {
+  const info = versionInfo({ webSim: 'v1.0.0', picodeck: { ref: 'v0.5.0', commit: 'abcdef1234' },
+    apps: APPS, builtinVersion: () => '1.2.0' });
+  const notes = releaseNotes(info);
+  assert.match(notes, /- blockexe 1\.0\.3/);
+  assert.doesNotMatch(notes, /\bv1\.0\.3/);
 });
 
 test('a follow release says it was rebuilt for the new PicoDeck ref', () => {

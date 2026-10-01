@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, utimesSync, writeFileSync, rmSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
-import { FILES, packageBuild } from '../../scripts/package.mjs';
+import { FILES, packageBuild, storeAppVersion } from '../../scripts/package.mjs';
 import { notesFromZip } from '../../scripts/notes.mjs';
 
 const INFO = { web_sim: 'v1.0.0', picodeck: { ref: 'v0.5.0', commit: 'abcdef1234' }, apps: { builtin: [], store: [] } };
@@ -45,4 +45,12 @@ test('a launcher.png older than picodeck_simulator.data is refused (a stale scre
   utimesSync(join(dir, 'launcher.png'), old, old);
   assert.throws(() => packageBuild({ build: dir, info: INFO }),
     /launcher\.png.*older than.*picodeck_simulator\.data/);
+});
+
+test('storeAppVersion reads a store app\'s own app.json from the build, or null', () => {
+  const dir = fakeBuild();
+  mkdirSync(join(dir, 'web_sd', 'apps', 'blockexe'), { recursive: true });
+  writeFileSync(join(dir, 'web_sd', 'apps', 'blockexe', 'app.json'), '{"version":"1.0.5"}');
+  assert.equal(storeAppVersion(dir, 'blockexe'), '1.0.5');
+  assert.equal(storeAppVersion(dir, 'missing'), null);
 });
