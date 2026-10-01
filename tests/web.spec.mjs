@@ -85,10 +85,26 @@ async function boot(page, query = '') {
 
 const distinctColours = (pixels) => new Set(pixels).size;
 
+// The screen once it has settled: two reads about 250 ms apart that are the
+// same. waitForLauncher's console line comes before the launcher's first
+// draw, so a build that yields in between (say while a boot splash is up)
+// would otherwise be captured mid-change. Fails if it never settles.
+async function stableScreen(page, timeout = 10_000) {
+  const deadline = Date.now() + timeout;
+  let before = await page.evaluate(screenOf);
+  for (;;) {
+    await page.waitForTimeout(250);
+    const now = await page.evaluate(screenOf);
+    if (now.every((p, i) => p === before[i])) return now;
+    if (Date.now() > deadline) throw new Error(`the screen never held still for 250 ms within ${timeout / 1000} s`);
+    before = now;
+  }
+}
+
 test('boots to the launcher and captures it @release', async ({ page }) => {
   const { errors, consoleLines } = await boot(page);
   await waitForLauncher(page, consoleLines);
-  const pixels = await page.evaluate(screenOf);
+  const pixels = await stableScreen(page);
   expect(distinctColours(pixels)).toBeGreaterThan(8);
   expect(errors).toEqual([]);
   // The home page's picture of the launcher, from the build under test.
