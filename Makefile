@@ -30,7 +30,7 @@ define wasm
 	$(EMCMAKE) cmake -S $(PICODECK)/simulator -B $(1) -DCMAKE_BUILD_TYPE=Release \
 		-DPICODECK_WEB_DIR=$(CURDIR) -DWEB_SIM_EXTRA_APPS="$(2)"
 	cmake --build $(1) -j$(JOBS) 2>&1 | tee $(1)/build.log
-	@if grep -q 'function signature mismatch' $(1)/build.log; then \
+	@if grep -qi 'function signature mismatch' $(1)/build.log; then \
 		echo "wasm-ld reported a function signature mismatch: WebAssembly traps on these at run time"; exit 1; fi
 endef
 
