@@ -53,7 +53,7 @@ function scratch(info = INFO) {
   mkdirSync(join(dir, 'bin'), { recursive: true });
   for (const file of Object.values(FILES)) writeFileSync(join(build, file), file);
   writeFileSync(join(dir, 'picodeck-web-sim.zip'), packageBuild({ build, info }));
-  for (const name of ['publish.sh', 'notes.mjs', 'version.mjs']) {
+  for (const name of ['publish.sh', 'notes.mjs', 'version.mjs', 'zip-version.mjs']) {
     writeFileSync(join(scriptsDir, name), readFileSync(join(SCRIPTS_DIR, name)));
   }
   chmodSync(join(scriptsDir, 'publish.sh'), 0o755);

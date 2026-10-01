@@ -8,7 +8,8 @@
 # release and, given a target, a tag that already exists (gh release create
 # would ignore --target and attach the zip to that tag). Also refuses to
 # publish a zip whose version.json disagrees with the tag being published
-# (the usual cause: a workflow forgot to set WEB_SIM_VERSION).
+# (the usual cause: a workflow forgot to set WEB_SIM_VERSION) -- read with
+# scripts/zip-version.mjs (fflate, the same as notes.mjs; no unzip binary).
 set -euo pipefail
 usage="usage: scripts/publish.sh <tag> [<target commit>]"
 if [ $# -lt 1 ] || [ -z "$1" ]; then echo "$usage" >&2; exit 1; fi
@@ -23,8 +24,9 @@ if [ ! -f "$zip" ]; then
   exit 1
 fi
 
-zip_version="$(unzip -p "$zip" version.json | node -e \
-  'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8")).web_sim)')"
+if ! zip_version="$(node "$here/zip-version.mjs" "$zip")"; then
+  exit 1
+fi
 if [ "$zip_version" != "$tag" ]; then
   echo "publish: $zip was packaged as web_sim $zip_version, not $tag" \
     "(did the build forget WEB_SIM_VERSION?)" >&2

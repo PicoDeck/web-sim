@@ -8,10 +8,22 @@ import { fileURLToPath } from 'node:url';
 import { unzipSync, strFromU8 } from 'fflate';
 import { releaseNotes } from './version.mjs';
 
-export function notesFromZip(bytes, opts = {}) {
+// A packaged zip's version.json, parsed: a clear error when the zip has none,
+// or it isn't valid JSON. Shared with scripts/zip-version.mjs so both read
+// the zip the same way (fflate, not an external unzip binary).
+export function readVersionJson(bytes) {
   const files = unzipSync(new Uint8Array(bytes), { filter: (f) => f.name === 'version.json' });
   if (!files['version.json']) throw new Error('the zip has no version.json');
-  return releaseNotes(JSON.parse(strFromU8(files['version.json'])), opts);
+  const text = strFromU8(files['version.json']);
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    throw new Error(`the zip's version.json is not valid JSON: ${err.message}`);
+  }
+}
+
+export function notesFromZip(bytes, opts = {}) {
+  return releaseNotes(readVersionJson(bytes), opts);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
