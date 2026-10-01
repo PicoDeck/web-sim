@@ -26,6 +26,11 @@ define wasm
 	@test -f $(PICODECK)/simulator/CMakeLists.txt || { echo "No PicoDeck checkout at $(PICODECK) (set PICODECK=...)"; exit 1; }
 	@grep -q PICODECK_WEB_DIR $(PICODECK)/simulator/CMakeLists.txt || \
 		{ echo "$(PICODECK) predates the web build seam (no PICODECK_WEB_DIR in simulator/CMakeLists.txt): pick a ref with it"; exit 1; }
+	@if [ -f $(1)/CMakeCache.txt ] && \
+	   ! grep -qxF "CMAKE_HOME_DIRECTORY:INTERNAL=$(realpath $(PICODECK))/simulator" $(1)/CMakeCache.txt; then \
+		echo "$(1) was configured against a different PicoDeck checkout: removing it to reconfigure"; \
+		rm -rf $(1); \
+	fi
 	$(MAKE) -C $(PICODECK) download-lua
 	$(EMCMAKE) cmake -S $(PICODECK)/simulator -B $(1) -DCMAKE_BUILD_TYPE=Release \
 		-DPICODECK_WEB_DIR=$(CURDIR) -DWEB_SIM_EXTRA_APPS="$(2)"
