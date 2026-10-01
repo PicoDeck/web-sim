@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
@@ -31,4 +31,18 @@ test('a build without launcher.png is refused with the fix', () => {
 
 test('notes come from the zip\'s version.json', () => {
   assert.match(notesFromZip(packageBuild({ build: fakeBuild(), info: INFO })), /^Built against PicoDeck v0\.5\.0/);
+});
+
+test('a build with a test fixture app baked in is refused (it looks like a test build)', () => {
+  const dir = fakeBuild();
+  mkdirSync(join(dir, 'web_sd', 'apps', 'web_test'), { recursive: true });
+  assert.throws(() => packageBuild({ build: dir, info: INFO }), /web_test/);
+});
+
+test('a launcher.png older than picodeck_simulator.data is refused (a stale screenshot)', () => {
+  const dir = fakeBuild();
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(join(dir, 'launcher.png'), old, old);
+  assert.throws(() => packageBuild({ build: dir, info: INFO }),
+    /launcher\.png.*older than.*picodeck_simulator\.data/);
 });

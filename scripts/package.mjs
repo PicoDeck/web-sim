@@ -8,7 +8,7 @@
 // WEB_SIM_VERSION and PICODECK_REF name the versions (default: each checkout's
 // exact tag, else its short commit).
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -24,6 +24,21 @@ export const FILES = {
   'launcher.png': 'launcher.png',
 };
 
+const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+// The test fixture apps' directory names (tests/fixtures/*, the Makefile's
+// FIXTURES): a release build must never have one baked in under
+// web_sd/apps/ — that means a test build (make test) got packaged instead of
+// a release build (make build).
+function fixtureAppNames() {
+  try {
+    return readdirSync(join(REPO_ROOT, 'tests', 'fixtures'), { withFileTypes: true })
+      .filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
 const git = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
 
 // A checkout's tag when it sits exactly on one, else its short commit.
@@ -37,7 +52,17 @@ function refOf(dir) {
 }
 
 // The zip's entries: FILES from the build directory, plus version.json.
-export function packageBuild({ build, info }) {
+// Refuses a build that looks like a test build, not a release one: a fixture
+// app baked into web_sd/apps/, or a launcher.png older than
+// picodeck_simulator.data (a stale screenshot from an earlier build).
+export function packageBuild({ build, info, fixtures = fixtureAppNames() }) {
+  for (const name of fixtures) {
+    const path = join(build, 'web_sd', 'apps', name);
+    if (existsSync(path)) {
+      throw new Error(`${path} is a test fixture app: this looks like a test build `
+        + '(make test), not a release build (make build)');
+    }
+  }
   const entries = {};
   for (const [name, file] of Object.entries(FILES)) {
     const path = join(build, file);
@@ -46,6 +71,12 @@ export function packageBuild({ build, info }) {
       throw new Error(`${path} is missing${hint}`);
     }
     entries[name] = readFileSync(path);
+  }
+  const dataPath = join(build, FILES['picodeck_simulator.data']);
+  const pngPath = join(build, FILES['launcher.png']);
+  if (statSync(pngPath).mtimeMs < statSync(dataPath).mtimeMs) {
+    throw new Error(`${pngPath} is older than ${dataPath}: a stale screenshot from an earlier build `
+      + '(run make smoke again)');
   }
   entries['version.json'] = strToU8(`${JSON.stringify(info, null, 2)}\n`);
   return zipSync(entries);
