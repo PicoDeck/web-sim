@@ -120,9 +120,24 @@ test('a latest release that never reaches the dispatched tag fails, naming both 
     pin: 'abc123', expectTag: 'v0.6.0', latestTag: gh.latestTag, sleep: gh.sleep,
     cmakeAt: async () => WITH_SEAM,
     latestRelease: async () => { throw new Error('should not be called'); },
-  }), (err) => /v0\.5\.0/.test(err.message) && /v0\.6\.0/.test(err.message));
+  }), (err) => /latest release is v0\.5\.0, not the dispatched v0\.6\.0/.test(err.message));
   assert.equal(gh.reads.length, 6);
   assert.deepEqual(gh.sleeps, Array(5).fill(10_000));
+});
+
+test('a latest release that moves PAST the dispatched tag fails with wording that is still true', async () => {
+  // Two PicoDeck releases close together: latest never equals v0.6.0 because
+  // it jumped straight to v0.7.0. "still v0.6.0" would be false here.
+  const gh = lagging(['v0.5.0', 'v0.7.0']);
+  await assert.rejects(shouldFollow({
+    pin: 'abc123', expectTag: 'v0.6.0', latestTag: gh.latestTag, sleep: gh.sleep,
+    cmakeAt: async () => WITH_SEAM,
+    latestRelease: async () => { throw new Error('should not be called'); },
+  }), (err) => {
+    assert.doesNotMatch(err.message, /still v0\.6\.0/);
+    assert.match(err.message, /latest release is v0\.7\.0, not the dispatched v0\.6\.0/);
+    return true;
+  });
 });
 
 test('an expected tag that is not a plain release tag is refused before any lookup', async () => {

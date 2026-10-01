@@ -40,8 +40,8 @@ export async function waitForLatest({ expected, latestTag, sleep = pause }) {
     tag = await latestTag();
     if (tag === expected) return tag;
   }
-  throw new Error(`PicoDeck released ${expected}, but its latest release is still `
-    + `${tag ?? 'none'} after ${LATEST_TRIES} reads ${LATEST_WAIT_MS / 1000} s apart`);
+  throw new Error(`PicoDeck released ${expected}, but after ${LATEST_TRIES} reads `
+    + `${LATEST_WAIT_MS / 1000} s apart its latest release is ${tag ?? 'none'}, not the dispatched ${expected}`);
 }
 
 export function bumpPatch(tag) {
