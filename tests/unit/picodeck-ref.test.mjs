@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { output, readPin, resolveRef, validateRef } from '../../scripts/picodeck-ref.mjs';
 
-const WITH_SEAM = 'if(EMSCRIPTEN)\n  include(${PICODECK_WEB_DIR}/web.cmake)\n';
+const WITH_SEAM = 'if(EMSCRIPTEN)\n  include(${PICODECK_WEB_DIR}/web.cmake)\n...\n    sim_native_api.c\n';
+const SEAM_BEFORE_NATIVE = 'if(EMSCRIPTEN)\n  include(${PICODECK_WEB_DIR}/web.cmake)\n';
 const WITHOUT = 'if(EMSCRIPTEN)\n  set(SIM_PLATFORM_SOURCES web/web_platform.c)\n';
 const repo = (tag, cmake) => ({ latestTag: async () => tag, cmakeAt: async () => cmake });
 
@@ -26,6 +27,12 @@ test('the pin, while the latest release predates the seam', async () => {
   assert.equal(r.ref, 'abc123');
   assert.equal(r.source, 'pin');
   assert.match(r.why, /v0\.4\.0, predates the web build seam/);
+});
+
+test('the pin, while the latest release has the seam but not native apps', async () => {
+  const r = await resolveRef({ explicit: '', pin: 'abc123', ...repo('v0.5.1', SEAM_BEFORE_NATIVE) });
+  assert.equal(r.ref, 'abc123');
+  assert.equal(r.source, 'pin');
 });
 
 test('the pin, when PicoDeck has no release at all', async () => {

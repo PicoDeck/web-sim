@@ -1,7 +1,8 @@
 # PicoDeck web simulator
 
 The browser demo at [picodeck.net/try](https://picodeck.net/try/): PicoDeck's
-simulator compiled to WebAssembly with Emscripten, running Lua apps in a page.
+simulator compiled to WebAssembly with Emscripten, running Lua apps, and native
+apps that ship a browser build of themselves, in a page.
 It is built from PicoDeck's own source: the latest
 [PicoDeck release](https://github.com/PicoDeck/picodeck/releases) that has the
 web build seam or, while no release has it, the PicoDeck ref in
@@ -13,7 +14,8 @@ web build seam or, while no release has it, the PicoDeck ref in
 - `platform/`: the web half of the simulator's platform layer.
   `web_platform.c` implements PicoDeck's `simulator/hal/web_platform.h`
   (Core 1 ticks, yielding to the browser, saves in IndexedDB);
-  `web_net_stubs.c` stubs networking, which the browser build lacks.
+  `web_net_stubs.c` stubs networking, which the browser build lacks;
+  `web_native.c` runs native apps (below).
 - `page/`: the page (`shell.html`) and its glue (`shell.js`, which
   picodeck.net's `/try/` page also loads). `/try/?app=<folder>` starts an app.
 - `web.cmake`: included by PicoDeck's `simulator/CMakeLists.txt`
@@ -23,6 +25,38 @@ web build seam or, while no release has it, the PicoDeck ref in
   `store` are release ZIPs pinned by SHA-256.
 - `picodeck.pin`: the PicoDeck ref CI builds while no PicoDeck release has the
   web build seam yet (`scripts/picodeck-ref.mjs`).
+
+## Native apps
+
+A native app runs here only if it ships a browser build of itself: `main.wasm`,
+a WebAssembly side module next to its `main.elf`, built from the same sources
+with
+
+    emcc -O2 -I<PicoDeck>/sdk/native -sSIDE_MODULE=2 -sASYNCIFY \
+         -sEXPORTED_FUNCTIONS=_picodeck_main <sources> -o main.wasm
+
+`platform/web_native.c` loads a fresh copy at each launch and calls
+`picodeck_main` with PicoDeck's API table (PicoDeck's
+`simulator/sim_native_api.c`). An app without a `main.wasm` is refused with a
+message, and one whose `main.wasm` fails to load returns to the launcher.
+
+The page is a main module (`-sMAIN_MODULE=2`). It exports only the C library
+functions and data the bundled apps import: `web.cmake` reads each bundled
+`main.wasm`'s imports, so a new app's imports are picked up when it is bundled.
+(`MAIN_MODULE=1` would export everything, but under ASYNCIFY Emscripten 6.0.10
+then generates the page's JS before the `dynCall_*` thunks exist, and every C
+callback the JS libraries make, SDL's key events among them, does nothing.)
+
+What a native app has to do differently in a browser build:
+- **No newlib syscall stubs.** The C library is Emscripten's. `/apps`, `/data`
+  and `/system` are linked into the browser's filesystem, and relative paths
+  resolve in the app's directory.
+- **Don't call `exit()`.** Emscripten's would end the page. Return from
+  `picodeck_main`, or `longjmp` back to it, as DOOM's `web_exit.c` does.
+- **Don't mix drawing calls and raw `getBackBuffer()` writes in one frame.** As
+  in the desktop simulator, the drawing calls win that present.
+- **Memory isn't reclaimed.** Each launch's memory stays allocated, a few MB per
+  launch.
 
 ## Build and test
 
@@ -34,6 +68,7 @@ or `PICODECK=...`).
     make build      # build/: the release page
     make serve      # http://127.0.0.1:8765/picodeck_simulator.html
     make test       # build-test/ (with tests/fixtures/*) + browser tests
+    make test DOOM=../doom  # also bundle a local DOOM (its `make web-stage` output)
     make smoke      # the @release browser tests on build/; writes build/launcher.png
     make package    # picodeck-web-sim.zip (after make smoke)
     make unit       # the scripts' unit tests

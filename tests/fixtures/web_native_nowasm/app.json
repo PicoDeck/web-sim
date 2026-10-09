@@ -1,0 +1,7 @@
+{
+    "id": "net.picodeck.webnativenowasm",
+    "name": "Web Native No Wasm",
+    "description": "Browser-test fixture: a native app with no browser build (test builds only)",
+    "version": "1.0.0",
+    "author": "PicoDeck"
+}

@@ -16,7 +16,19 @@ EMSDK ?= $(HOME)/emsdk
 EMCMAKE := $(EMSDK)/upstream/emscripten/emcmake
 JOBS := $(shell nproc 2>/dev/null || echo 4)
 # The test build's fixture apps (a CMake list: WEB_SIM_EXTRA_APPS).
-FIXTURES := $(CURDIR)/tests/fixtures/web_test;$(CURDIR)/tests/fixtures/web_busy
+FIXTURES := $(CURDIR)/tests/fixtures/web_test;$(CURDIR)/tests/fixtures/web_busy;$(CURDIR)/tests/fixtures/web_native;$(CURDIR)/tests/fixtures/web_native_bad;$(CURDIR)/tests/fixtures/web_native_nowasm
+# make test DOOM=<a PicoDeck/doom checkout>: also bundle the DOOM staged there
+# by its `make web-stage` (build-web/doom).
+DOOM ?=
+TEST_APPS := $(FIXTURES)$(if $(DOOM),;$(abspath $(DOOM))/build-web/doom)
+
+# Native fixture apps: WebAssembly side modules built against PicoDeck's
+# native SDK, as a game's own browser build is (its Makefile's main.wasm).
+EMCC := $(EMSDK)/upstream/emscripten/emcc
+NATIVE_CFLAGS := -O2 -Wall -Wextra -Werror -I$(PICODECK)/sdk/native \
+	-sSIDE_MODULE=2 -sASYNCIFY -sEXPORTED_FUNCTIONS=_picodeck_main
+tests/fixtures/web_native/main.wasm: tests/fixtures/web_native/main.c $(PICODECK)/sdk/native/os.h
+	$(EMCC) $(NATIVE_CFLAGS) $< -o $@
 
 .PHONY: build build-test test smoke package serve unit clean
 
@@ -24,8 +36,8 @@ FIXTURES := $(CURDIR)/tests/fixtures/web_test;$(CURDIR)/tests/fixtures/web_busy
 define wasm
 	@test -x $(EMCMAKE) || { echo "Emscripten not found at $(EMSDK) (set EMSDK=...)"; exit 1; }
 	@test -f $(PICODECK)/simulator/CMakeLists.txt || { echo "No PicoDeck checkout at $(PICODECK) (set PICODECK=...)"; exit 1; }
-	@grep -q PICODECK_WEB_DIR $(PICODECK)/simulator/CMakeLists.txt || \
-		{ echo "$(PICODECK) predates the web build seam (no PICODECK_WEB_DIR in simulator/CMakeLists.txt): pick a ref with it"; exit 1; }
+	@grep -q sim_native_api.c $(PICODECK)/simulator/CMakeLists.txt || \
+		{ echo "$(PICODECK) predates the web build seam with native apps (no sim_native_api.c in simulator/CMakeLists.txt): pick a ref with it"; exit 1; }
 	@if [ -f $(1)/CMakeCache.txt ] && \
 	   ! grep -qxF "CMAKE_HOME_DIRECTORY:INTERNAL=$(realpath $(PICODECK))/simulator" $(1)/CMakeCache.txt; then \
 		echo "$(1) was configured against a different PicoDeck checkout: removing it to reconfigure"; \
@@ -42,8 +54,8 @@ endef
 build:
 	$(call wasm,build,)
 
-build-test:
-	$(call wasm,build-test,$(FIXTURES))
+build-test: tests/fixtures/web_native/main.wasm
+	$(call wasm,build-test,$(TEST_APPS))
 
 test: build-test
 	WEB_SIM_BUILD=build-test npx playwright test
@@ -61,4 +73,4 @@ unit:
 	npm test
 
 clean:
-	rm -rf build build-test picodeck-web-sim.zip test-results playwright-report
+	rm -rf build build-test picodeck-web-sim.zip test-results playwright-report tests/fixtures/web_native/main.wasm

@@ -12,8 +12,9 @@ const APPS = JSON.parse(readFileSync(new URL('../apps.json', import.meta.url), '
 const ALL_APPS = [...APPS.builtin, ...APPS.store.map((a) => a.dir)];
 const FIXTURE_DATA = '/sd/data/net.picodeck.webtest';
 const BUSY_DATA = '/sd/data/net.picodeck.webbusy';
+const NATIVE_DATA = '/sd/data/net.picodeck.webnative';
 // The test build's fixture apps (tests/fixtures/, the Makefile's FIXTURES).
-const FIXTURE_APPS = ['web_test', 'web_busy'];
+const FIXTURE_APPS = ['web_test', 'web_busy', 'web_native', 'web_native_bad', 'web_native_nowasm'];
 // PicoDeck's launcher writes /system/running.txt when it starts an app and
 // deletes it when the app returns (RUNNING_PATH in PicoDeck's
 // src/os/crashlog.c): here, on the SD image mounted at /sd.
@@ -103,6 +104,24 @@ async function stableScreen(page, timeout = 10_000) {
     if (Date.now() > deadline) throw new Error(`the screen never held still for 250 ms within ${timeout / 1000} s`);
     before = now;
   }
+}
+
+// The page's test hooks (platform/web_platform.c): queue an app launch as the
+// launcher's ?app= does, and ask the running app to exit as the dev `exit`
+// command does.
+const launch = (page, app) => page.evaluate((a) => Module.ccall('web_launch', null, ['string'], [a]), app);
+const exitApp = (page) => page.evaluate(() => Module.ccall('web_exit_app', null, [], []));
+
+// Waits until a file in the mounted FS holds exactly `text`.
+function waitForText(page, path, text, options) {
+  return page.waitForFunction((args) => {
+    try { return FS.readFile(args[0], { encoding: 'utf8' }) === args[1]; } catch (e) { return false; }
+  }, [path, text], options);
+}
+
+function waitForNoFile(page, path, options) {
+  return page.waitForFunction((p) => { try { FS.stat(p); return false; } catch (e) { return true; } },
+    path, options);
 }
 
 test('boots to the launcher and captures it @release', async ({ page }) => {
@@ -220,6 +239,73 @@ test.describe('with the fixture apps', () => {
     // Still the busy app spinning, not a Lua error or the launcher.
     expect(await page.evaluate(fileExists, RUNNING)).toBe(true);
     expect(await page.evaluate(fileText, '/sd/system/error.log')).toBeNull();
+    expect(errors).toEqual([]);
+  });
+
+  // web_native (tests/fixtures/web_native/main.c) is a compiled-in native app:
+  // platform/web_native.c loads its main.wasm and hands it PicoDeck's g_api.
+  test('a native app runs from its main.wasm and uses the API tables', async ({ page }) => {
+    const { errors, consoleLines } = await boot(page, '?app=web_native');
+    await waitForText(page, `${NATIVE_DATA}/ready.txt`, '1', { timeout: 30_000 });
+    const read = (name) => page.evaluate(fileText, `${NATIVE_DATA}/${name}`);
+    expect(await read('launches.txt')).toBe('1');
+    expect(await read('runs.txt')).toBe('1');
+    expect(await read('jumped.txt')).toBe('7');
+    expect(await read('audio.txt')).toBe('ticked');
+    expect(await read('libc_abs.txt')).toBe('ok');
+    expect(await read('libc_rel.txt')).toBe('ok');
+    // Green from the drawing call; red from the raw panel-order rows 100-199.
+    const screen = await page.evaluate(screenOf);
+    expect(screen[50 * 320 + 160].toString(16)).toBe('7e0');
+    expect(screen[150 * 320 + 160].toString(16)).toBe('f800');
+    expect(consoleLines.some((l) => /\[APP\] WEBNATIVE ready 1/.test(l)), consoleLines.join('\n')).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test('a native app exits, and every relaunch starts clean', async ({ page }) => {
+    const { errors, consoleLines } = await boot(page, '?app=web_native');
+    await waitForText(page, `${NATIVE_DATA}/ready.txt`, '1', { timeout: 30_000 });
+    for (let n = 2; n <= 5; n++) {
+      // Alternate the two ways out: the exit request (shouldExit) and Esc.
+      if (n % 2 === 0) {
+        await exitApp(page);
+      } else {
+        await page.locator('#canvas').focus();
+        await page.keyboard.press('Escape');
+      }
+      await waitForNoFile(page, RUNNING, { timeout: 15_000 });
+      await launch(page, 'web_native');
+      await waitForText(page, `${NATIVE_DATA}/ready.txt`, String(n), { timeout: 30_000 });
+      expect(await page.evaluate(fileText, `${NATIVE_DATA}/runs.txt`), `launch ${n}`).toBe('1');
+    }
+    // The fixture returns with its audio callback still registered: the OS
+    // must clear it, and the page must keep running at the launcher.
+    await exitApp(page);
+    await waitForNoFile(page, RUNNING, { timeout: 15_000 });
+    await page.waitForTimeout(2000);
+    await page.waitForFunction(screenNotBlank, null, { timeout: 10_000 });
+    expect(errors).toEqual([]);
+    expect(consoleLines.some((l) => /RuntimeError/.test(l)), consoleLines.join('\n')).toBe(false);
+  });
+
+  test('a native app with a broken main.wasm returns to the launcher', async ({ page }) => {
+    const { errors, consoleLines } = await boot(page, '?app=web_native_bad');
+    await expect.poll(() => consoleLines.some((l) => /\[WEB\] Web Native Bad: main\.wasm failed to load/.test(l)),
+      { timeout: 30_000, message: consoleLines.join('\n') }).toBe(true);
+    await page.locator('#canvas').focus();
+    await page.keyboard.press('Escape');  // dismiss the launcher's error screen, if any
+    await waitForNoFile(page, RUNNING, { timeout: 15_000 });
+    await page.waitForFunction(screenNotBlank, null, { timeout: 10_000 });
+    expect(errors).toEqual([]);
+  });
+
+  test('a native app without a main.wasm is refused, not run', async ({ page }) => {
+    const { errors, consoleLines } = await boot(page, '?app=web_native_nowasm');
+    await expect.poll(() => consoleLines.some((l) => /\[WEB\] Web Native No Wasm has no browser build/.test(l)),
+      { timeout: 30_000, message: consoleLines.join('\n') }).toBe(true);
+    await page.locator('#canvas').focus();
+    await page.keyboard.press('Escape');
+    await waitForNoFile(page, RUNNING, { timeout: 15_000 });
     expect(errors).toEqual([]);
   });
 });

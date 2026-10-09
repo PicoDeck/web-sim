@@ -8,7 +8,15 @@ if(CMAKE_VERSION VERSION_LESS 3.19)
     message(FATAL_ERROR "web-sim needs CMake 3.19 or newer (string(JSON))")
 endif()
 
-set(PICODECK_WEB_PLATFORM_SOURCES ${PICODECK_WEB_DIR}/platform/web_platform.c)
+# Native apps run here as WebAssembly side modules that the page dlopens
+# (platform/web_native.c), so the page is a main module: every object in it
+# must be position-independent. This file is included before PicoDeck's
+# simulator/CMakeLists.txt creates any target, so this reaches them all.
+add_compile_options(-fPIC)
+
+set(PICODECK_WEB_PLATFORM_SOURCES
+    ${PICODECK_WEB_DIR}/platform/web_platform.c
+    ${PICODECK_WEB_DIR}/platform/web_native.c)
 set(PICODECK_WEB_NET_SOURCES ${PICODECK_WEB_DIR}/platform/web_net_stubs.c)
 
 # Test builds add the browser tests' fixture apps here (absolute app dirs);
@@ -116,6 +124,39 @@ function(picodeck_web_package target)
     set(sd_stamp ${CMAKE_BINARY_DIR}/web_sd.stamp)
     file(CONFIGURE OUTPUT ${sd_stamp} CONTENT "@WEB_SD_STAMP@" @ONLY)
 
+    # The page is a main module that exports only what is listed: every C
+    # library function and data symbol the bundled native apps import (each
+    # main.wasm's "env", "GOT.func" and "GOT.mem" imports), so a new app's
+    # imports are picked up when it is bundled. (MAIN_MODULE=1, which exports
+    # everything, links twice under ASYNCIFY and generates its JS from the
+    # first link, before the dynCall_* thunks exist: every C callback the JS
+    # libraries make, SDL's key events among them, becomes a no-op.)
+    find_program(WEB_SIM_WASM_DIS wasm-dis
+        HINTS $ENV{EMSDK}/upstream/bin $ENV{HOME}/emsdk/upstream/bin REQUIRED)
+    file(GLOB native_wasms ${WEB_SD_DIR}/apps/*/main.wasm)
+    set(native_imports "")
+    foreach(w ${native_wasms})
+        execute_process(COMMAND ${WEB_SIM_WASM_DIS} ${w}
+            OUTPUT_VARIABLE dis ERROR_QUIET RESULT_VARIABLE dis_rc)
+        if(NOT dis_rc EQUAL 0)
+            continue()  # not a WebAssembly module: the runner reports it at launch
+        endif()
+        string(REGEX MATCHALL "\\(import \"(env|GOT\\.func|GOT\\.mem)\" \"[A-Za-z0-9_]+\"" found "${dis}")
+        foreach(f ${found})
+            string(REGEX REPLACE ".*\"([A-Za-z0-9_]+)\"$" "_\\1" sym "${f}")
+            list(APPEND native_imports ${sym})
+        endforeach()
+    endforeach()
+    list(REMOVE_DUPLICATES native_imports)
+    list(FILTER native_imports EXCLUDE REGEX
+        "^_(memory|__indirect_function_table|__memory_base|__table_base|__stack_pointer|__asyncify_state|__asyncify_data|invoke_.*)$")
+    list(JOIN native_imports "," native_exports)
+    set(native_exports_comma "")
+    if(native_exports)
+        set(native_exports_comma ",${native_exports}")
+    endif()
+    message(STATUS "web-sim: the page exports, for native apps: ${native_exports}")
+
     set_target_properties(${target} PROPERTIES
         SUFFIX ".html"
         LINK_DEPENDS "${PICODECK_WEB_DIR}/page/shell.html;${sd_stamp}")
@@ -123,6 +164,8 @@ function(picodeck_web_package target)
     configure_file(${PICODECK_WEB_DIR}/page/shell.js ${CMAKE_BINARY_DIR}/shell.js COPYONLY)
     target_link_options(${target} PRIVATE
         -O2
+        -sMAIN_MODULE=2
+        "-sEXPORTED_FUNCTIONS=_main,_web_screen,_web_launch,_web_exit_app,_web_type_char${native_exports_comma}"
         -sASYNCIFY
         -sASYNCIFY_STACK_SIZE=262144
         -sSTACK_SIZE=1048576
@@ -130,7 +173,7 @@ function(picodeck_web_package target)
         -sINITIAL_MEMORY=64MB
         -sEXIT_RUNTIME=0
         -lidbfs.js
-        -sEXPORTED_RUNTIME_METHODS=FS,HEAPU16
+        -sEXPORTED_RUNTIME_METHODS=FS,HEAPU16,ccall
         --preload-file ${WEB_SD_DIR}@/sd
         --shell-file ${PICODECK_WEB_DIR}/page/shell.html
     )

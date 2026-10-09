@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // Which PicoDeck ref a web-sim build compiles: the ref given on the command
 // line (a tag, branch or commit); else PicoDeck's latest release, if it has
-// the web build seam (PICODECK_WEB_DIR in simulator/CMakeLists.txt); else the
+// the web build seam with native apps (sim_native_api.c in simulator/CMakeLists.txt); else the
 // commit in picodeck.pin. Prints ref= and why= lines, and appends them to
 // $GITHUB_OUTPUT in CI.
 import { appendFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const REPO = 'PicoDeck/picodeck';
-export const SEAM = 'PICODECK_WEB_DIR';
+export const SEAM = 'sim_native_api.c';
 
 // latestTag() gives the latest release tag or null; cmakeAt(ref) gives that
 // ref's simulator/CMakeLists.txt. source is 'requested', 'release' or 'pin':

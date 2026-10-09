@@ -15,17 +15,22 @@
 #include <emscripten.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <errno.h>
 #include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 // PicoDeck's side of the seam: hal/web_platform.h states the contract (what
 // this file must define, and the core functions it may call).
 #include "hal/web_platform.h"
 #include "hal/hal_display.h"     // hal_display_get_framebuffer
 #include "hal/hal_input.h"       // hal_input_inject_char
+#include "dev_ops.h"             // dev_op_exit (test hook)
+#include "sim_test_control.h"    // sim_launch_request (test hook)
+#include "web_internal.h"        // web_sd_root
 // The desktop-only hooks this file defines:
 #include "sim_socket.h"          // sim_socket_notify*
 #include "sim_socket_handler.h"  // sim_*_active_terminal
-#include "unicorn_runner.h"      // unicorn_run_app
 
 // Longest the OS may run without handing the tab back to the browser. Longer
 // than a frame so apps that flush every frame are paced by present, not this.
@@ -95,11 +100,26 @@ EM_ASYNC_JS(void, web_fs_init_js, (const char *dir_c), {
   window.addEventListener('pagehide', function () { sync(false); });
 });
 
+static char s_sd_root[256];
+const char *web_sd_root(void) { return s_sd_root; }
+
 void web_fs_init(const char *sd_root) {
+    snprintf(s_sd_root, sizeof(s_sd_root), "%s", sd_root);
     char dir[512];
     snprintf(dir, sizeof(dir), "%s/data", sd_root);
     web_fs_init_js(dir);
     printf("[WEB] Saves persisted in browser storage: %s\n", dir);
+    // A native app's own C library calls (fopen and friends) see the browser's
+    // filesystem, not PicoDeck's SD layer: link the SD's top directories at
+    // the paths they have on the device.
+    static const char *const k_dirs[] = { "apps", "data", "system" };
+    for (size_t i = 0; i < sizeof(k_dirs) / sizeof(k_dirs[0]); i++) {
+        char target[512], link[16];
+        snprintf(target, sizeof(target), "%s/%s", sd_root, k_dirs[i]);
+        snprintf(link, sizeof(link), "/%s", k_dirs[i]);
+        if (symlink(target, link) != 0)
+            printf("[WEB] %s -> %s: %s\n", link, target, strerror(errno));
+    }
 }
 
 // ── Soft-keyboard text ───────────────────────────────────────────────────────
@@ -125,12 +145,13 @@ static void *s_active_terminal;
 void sim_set_active_terminal(void *term) { s_active_terminal = term; }
 void *sim_get_active_terminal(void) { return s_active_terminal; }
 
-// Native ELF apps need Unicorn (a JIT), which cannot run inside WASM.
-bool unicorn_run_app(const char *elf_path, const char *app_dir,
-                     const char *app_id, const char *app_name) {
-    (void)elf_path; (void)app_dir; (void)app_id;
-    printf("[WEB] Native app '%s' is not supported in the web demo\n", app_name);
-    return false;
+// ── Test hooks (tests/web.spec.mjs) ──────────────────────────────────────────
+// Queue an app launch, as ?app= does at boot; and ask the running app to
+// exit, as the dev `exit` command does (a native app's shouldExit()).
+EMSCRIPTEN_KEEPALIVE void web_launch(const char *name) { sim_launch_request(name, NULL); }
+EMSCRIPTEN_KEEPALIVE void web_exit_app(void) {
+    char reply[DEV_OP_REPLY_MAX];
+    dev_op_exit(reply, sizeof(reply));
 }
 
 // ── The screen, for the browser tests ────────────────────────────────────────

@@ -4,7 +4,7 @@ import { bumpPatch, decide, outputsOf, rebuiltFor, shouldFollow } from '../../sc
 import { github } from '../../scripts/picodeck-ref.mjs';
 import { releaseNotes } from '../../scripts/version.mjs';
 
-const WITH_SEAM = 'if(EMSCRIPTEN)\n  include(${PICODECK_WEB_DIR}/web.cmake)\n';
+const WITH_SEAM = 'if(EMSCRIPTEN)\n  include(${PICODECK_WEB_DIR}/web.cmake)\n...\n    sim_native_api.c\n';
 const WITHOUT = 'if(EMSCRIPTEN)\n  set(SIM_PLATFORM_SOURCES web/web_platform.c)\n';
 
 // When each PicoDeck release was published, and when web-sim's latest

@@ -1,0 +1,7 @@
+{
+    "id": "net.picodeck.webnativebad",
+    "name": "Web Native Bad",
+    "description": "Browser-test fixture: a native app whose main.wasm is broken (test builds only)",
+    "version": "1.0.0",
+    "author": "PicoDeck"
+}
