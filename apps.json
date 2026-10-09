@@ -10,6 +10,15 @@
       "dir": "brick15",
       "url": "https://github.com/PicoDeck/brick15/releases/download/v1.0.0/picodeck-brick15-v1.0.0.zip",
       "sha256": "c57e9ecd5ee2d5fa10e119d42369c2b4e20d8256b9eeb8f82d822c6c9523af8e"
+    },
+    {
+      "dir": "doom",
+      "url": "https://github.com/PicoDeck/doom/releases/download/v1.0.4/picodeck-doom-v1.0.4.zip",
+      "sha256": "62048b28be5732e41690c5d54b1df8cbde9df40e0a8a70c66c5b0db3500c2e1c",
+      "wasm": {
+        "url": "https://github.com/PicoDeck/doom/releases/download/v1.0.4/main.wasm",
+        "sha256": "d4f57f42db648958064c29c7d28899c559a598b336e218621ebd42e72983fbfa"
+      }
     }
   ]
 }

@@ -65,7 +65,8 @@ function(picodeck_web_package target)
     endif()
 
     # "store": release ZIPs pinned by SHA-256, downloaded at configure time
-    # into web_downloads/ and reused while the hash still matches.
+    # into web_downloads/ and reused while the hash still matches. A native
+    # app's entry also pins its browser build ("wasm").
     string(JSON store_type ERROR_VARIABLE json_err TYPE "${apps_json}" store)
     if(json_err OR NOT store_type STREQUAL "ARRAY")
         message(FATAL_ERROR "web-sim: apps.json: \"store\" must be an array")
@@ -100,8 +101,32 @@ function(picodeck_web_package target)
                 endif()
             endif()
             file(ARCHIVE_EXTRACT INPUT ${app_zip} DESTINATION ${WEB_SD_DIR}/apps/${app_dir})
-            if(NOT EXISTS ${WEB_SD_DIR}/apps/${app_dir}/main.lua)
-                message(FATAL_ERROR "web-sim: store app ${app_dir}: ${app_url} has no main.lua at its root")
+            if(NOT EXISTS ${WEB_SD_DIR}/apps/${app_dir}/main.lua AND NOT EXISTS ${WEB_SD_DIR}/apps/${app_dir}/main.elf)
+                message(FATAL_ERROR "web-sim: store app ${app_dir}: ${app_url} has no main.lua or main.elf at its root")
+            endif()
+            # A native app's browser build: "wasm": {"url", "sha256"}, its
+            # release's main.wasm (platform/web_native.c), downloaded and
+            # checked like the zip.
+            string(JSON wasm_url ERROR_VARIABLE no_wasm GET "${apps_json}" store ${i} wasm url)
+            if(NOT no_wasm)
+                string(JSON wasm_sha ERROR_VARIABLE json_err GET "${apps_json}" store ${i} wasm sha256)
+                if(json_err)
+                    message(FATAL_ERROR "web-sim: apps.json: store[${i}] (${app_dir}) has a \"wasm\" with no \"sha256\"")
+                endif()
+                set(wasm_file ${CMAKE_BINARY_DIR}/web_downloads/${app_dir}.wasm)
+                set(have_sha "")
+                if(EXISTS ${wasm_file})
+                    file(SHA256 ${wasm_file} have_sha)
+                endif()
+                if(NOT have_sha STREQUAL wasm_sha)
+                    file(DOWNLOAD ${wasm_url} ${wasm_file} TLS_VERIFY ON
+                         EXPECTED_HASH SHA256=${wasm_sha} STATUS dl_status)
+                    list(GET dl_status 0 dl_code)
+                    if(NOT dl_code EQUAL 0)
+                        message(FATAL_ERROR "web-sim: store app ${app_dir}: ${wasm_url}: ${dl_status}")
+                    endif()
+                endif()
+                configure_file(${wasm_file} ${WEB_SD_DIR}/apps/${app_dir}/main.wasm COPYONLY)
             endif()
         endforeach()
     endif()

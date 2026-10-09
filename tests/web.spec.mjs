@@ -165,6 +165,19 @@ test('a release build carries no test fixture @release', async ({ page }) => {
   }
 });
 
+// A store app with a browser build ("wasm" in apps.json) must arrive with it,
+// next to the main.elf the launcher lists it by.
+test('every native store app carries its main.wasm @release', async ({ page }) => {
+  const native = APPS.store.filter((a) => a.wasm);
+  test.skip(native.length === 0, 'apps.json lists no native store app');
+  const { consoleLines } = await boot(page);
+  await waitForLauncher(page, consoleLines);
+  for (const a of native) {
+    expect(await page.evaluate(fileExists, `/sd/apps/${a.dir}/main.elf`), `${a.dir}/main.elf`).toBe(true);
+    expect(await page.evaluate(fileExists, `/sd/apps/${a.dir}/main.wasm`), `${a.dir}/main.wasm`).toBe(true);
+  }
+});
+
 test('an unknown ?app= boots to the launcher @release', async ({ page }) => {
   const app = 'no-such-app';
   const { errors, consoleLines } = await boot(page, `?app=${app}`);
