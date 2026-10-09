@@ -141,10 +141,17 @@ function(picodeck_web_package target)
         if(NOT dis_rc EQUAL 0)
             continue()  # not a WebAssembly module: the runner reports it at launch
         endif()
+        # A side module reaches its own globals through the GOT too (so they
+        # could be overridden), and resolves those from its own exports: only
+        # what it imports and does not export comes from the page.
+        string(REGEX MATCHALL "\\(export \"[A-Za-z0-9_]+\"" own "${dis}")
+        list(TRANSFORM own REPLACE ".*\"([A-Za-z0-9_]+)\"$" "\\1")
         string(REGEX MATCHALL "\\(import \"(env|GOT\\.func|GOT\\.mem)\" \"[A-Za-z0-9_]+\"" found "${dis}")
         foreach(f ${found})
-            string(REGEX REPLACE ".*\"([A-Za-z0-9_]+)\"$" "_\\1" sym "${f}")
-            list(APPEND native_imports ${sym})
+            string(REGEX REPLACE ".*\"([A-Za-z0-9_]+)\"$" "\\1" name "${f}")
+            if(NOT name IN_LIST own)
+                list(APPEND native_imports _${name})
+            endif()
         endforeach()
     endforeach()
     list(REMOVE_DUPLICATES native_imports)
