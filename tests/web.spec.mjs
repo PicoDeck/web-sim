@@ -286,6 +286,10 @@ test.describe('with the fixture apps', () => {
     await page.waitForFunction(screenNotBlank, null, { timeout: 10_000 });
     expect(errors).toEqual([]);
     expect(consoleLines.some((l) => /RuntimeError/.test(l)), consoleLines.join('\n')).toBe(false);
+    // The fixture sets system_clock_khz: the launcher's clock change at each
+    // launch and exit pauses Core 1, which must ack rather than time out.
+    expect(consoleLines.some((l) => /\[LAUNCHER\] Changing clock/.test(l))).toBe(true);
+    expect(consoleLines.some((l) => /Core 1 pause timeout/.test(l)), consoleLines.join('\n')).toBe(false);
   });
 
   test('a native app with a broken main.wasm returns to the launcher', async ({ page }) => {
@@ -332,5 +336,7 @@ test('DOOM plays, exits to the launcher and starts again @release', async ({ pag
     expect(consoleLines.filter((l) => /\[WEB\] DOOM returned/.test(l)).length, `round ${round}`).toBe(round);
   }
   expect(consoleLines.some((l) => /\[APP\] DOOM: Exiting/.test(l)), consoleLines.join('\n')).toBe(true);
+  // DOOM sets system_clock_khz: no stall waiting for Core 1 at launch or exit.
+  expect(consoleLines.some((l) => /Core 1 pause timeout/.test(l)), consoleLines.join('\n')).toBe(false);
   expect(errors).toEqual([]);
 });

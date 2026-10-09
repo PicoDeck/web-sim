@@ -3,5 +3,6 @@
     "name": "Web Native",
     "description": "Browser-test fixture: a compiled-in native app (test builds only)",
     "version": "1.0.0",
-    "author": "PicoDeck"
+    "author": "PicoDeck",
+    "system_clock_khz": 300000
 }
