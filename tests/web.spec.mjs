@@ -309,3 +309,28 @@ test.describe('with the fixture apps', () => {
     expect(errors).toEqual([]);
   });
 });
+
+// DOOM (PicoDeck/doom's main.wasm): in a release build once apps.json lists
+// it, in a test build when made with DOOM=<a Doom checkout> (make test).
+// It draws rows 60-259 (dg_picodeck.c, DOOM_Y_OFFSET).
+function doomDrawn() {
+  if (typeof Module === 'undefined' || !Module._web_screen || !Module.HEAPU16) return false;
+  const base = Module._web_screen() >> 1;
+  return new Set(Module.HEAPU16.subarray(base + 60 * 320, base + 260 * 320)).size > 16;
+}
+
+test('DOOM plays, exits to the launcher and starts again @release', async ({ page }) => {
+  const { errors, consoleLines } = await boot(page);
+  await waitForLauncher(page, consoleLines);
+  test.skip(!(await page.evaluate(fileExists, '/sd/apps/doom/main.wasm')), 'no DOOM in this build');
+  for (const round of [1, 2]) {
+    await launch(page, 'doom');
+    await waitForFile(page, RUNNING, { timeout: 30_000 });
+    await page.waitForFunction(doomDrawn, null, { timeout: 60_000 });
+    await exitApp(page);
+    await waitForNoFile(page, RUNNING, { timeout: 15_000 });
+    expect(consoleLines.filter((l) => /\[WEB\] DOOM returned/.test(l)).length, `round ${round}`).toBe(round);
+  }
+  expect(consoleLines.some((l) => /\[APP\] DOOM: Exiting/.test(l)), consoleLines.join('\n')).toBe(true);
+  expect(errors).toEqual([]);
+});
