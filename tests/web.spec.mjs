@@ -125,6 +125,66 @@ function waitForNoFile(page, path, options) {
     path, options);
 }
 
+// A browser gamepad, faked for the page (page.addInitScript): what
+// navigator.getGamepads() returns, as Chrome does once a real pad's button
+// has been pressed. SDL's Emscripten joystick driver (SDL 2.32.10,
+// src/joystick/emscripten/SDL_sysjoystick.c) opens the pads present when it
+// starts and later ones on 'gamepadconnected', drops one on
+// 'gamepaddisconnected', and re-reads a pad's buttons[i].pressed and axes[i]
+// only when its timestamp changes; Emscripten's libhtml5.js copies id, index,
+// mapping, connected, timestamp, axes and buttons from it. Buttons in the
+// standard layout: 0 A (bottom), 1 B, 2 X, 3 Y, 8 Back, 9 Start, 12-15 the
+// D-pad's up, down, left, right, 16 Home. Self-contained: it runs in the page.
+function fakeGamepad({ present = true, mapping = 'standard' } = {}) {
+  const pad = {
+    id: 'Fake Pad (STANDARD GAMEPAD)', index: 0, mapping, connected: true, timestamp: 1,
+    axes: [0, 0, 0, 0],
+    buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+  };
+  let pads = present ? [pad] : [];
+  Object.defineProperty(navigator, 'getGamepads', { value: () => pads, configurable: true });
+  const fire = (type) => {
+    const ev = new Event(type);
+    Object.defineProperty(ev, 'gamepad', { value: pad });
+    window.dispatchEvent(ev);
+  };
+  window.fakePad = {
+    set(button, down) {
+      pad.buttons[button].pressed = down;
+      pad.buttons[button].touched = down;
+      pad.buttons[button].value = down ? 1 : 0;
+      pad.timestamp += 1;
+    },
+    connect() { pads = [pad]; fire('gamepadconnected'); },
+    disconnect() { pad.connected = false; pads = [null]; fire('gamepaddisconnected'); },
+  };
+}
+const PAD_BUTTON = { A: 0, B: 1, DOWN: 13 };
+// hal_pad.c's line when it opens a controller.
+const PAD_CONNECTED_RE = /\[PAD\] Connected: /;
+const padSet = (page, button, down) =>
+  page.evaluate((a) => window.fakePad.set(a[0], a[1]), [button, down]);
+// Press a button until `path` holds `text` (the app has seen the press), then let go.
+async function padTap(page, button, path, text) {
+  await padSet(page, button, true);
+  await waitForText(page, path, text, { timeout: 10_000 });
+  await padSet(page, button, false);
+}
+// A hash of the screen as the display shows it. Self-contained, for
+// page.evaluate / page.waitForFunction.
+function screenHash() {
+  const base = Module._web_screen() >> 1;
+  let h = 0;
+  for (const p of Module.HEAPU16.subarray(base, base + 320 * 320)) h = (Math.imul(h, 31) + p) | 0;
+  return h;
+}
+function screenChangedFrom(hash) {
+  const base = Module._web_screen() >> 1;
+  let h = 0;
+  for (const p of Module.HEAPU16.subarray(base, base + 320 * 320)) h = (Math.imul(h, 31) + p) | 0;
+  return h !== hash;
+}
+
 test('boots to the launcher and captures it @release', async ({ page }) => {
   const { errors, consoleLines } = await boot(page);
   await waitForLauncher(page, consoleLines);
@@ -240,6 +300,98 @@ test.describe('with the fixture apps', () => {
     await page.keyboard.press('F4');
     await waitForText(page, `${PAD_DATA}/a.txt`, '2', { timeout: 10_000 });
     expect(await page.evaluate(fileText, `${PAD_DATA}/chars.txt`)).toBe('zx');
+    expect(errors).toEqual([]);
+  });
+
+  test.describe('with a browser gamepad', () => {
+    test('a gamepad present at load plays the game', async ({ page }) => {
+      await page.addInitScript(fakeGamepad, { present: true });
+      const { errors, consoleLines } = await boot(page, '?app=web_pad');
+      await waitForText(page, `${PAD_DATA}/ready.txt`, '1', { timeout: 30_000 });
+      await expect.poll(() => consoleLines.some((l) => PAD_CONNECTED_RE.test(l)),
+        { timeout: 10_000, message: consoleLines.join('\n') }).toBe(true);
+      await padTap(page, PAD_BUTTON.A, `${PAD_DATA}/a.txt`, '1');
+      await padTap(page, PAD_BUTTON.B, `${PAD_DATA}/b.txt`, '1');
+      // A pad presses buttons; it never types.
+      expect(await page.evaluate(fileText, `${PAD_DATA}/chars.txt`)).toBeNull();
+      expect(errors).toEqual([]);
+    });
+
+    // Chrome lists a pad only after one of its buttons is pressed with the
+    // page open, so on /try the pad nearly always arrives after load.
+    test('a gamepad that connects after the page has loaded plays the game', async ({ page }) => {
+      await page.addInitScript(fakeGamepad, { present: false });
+      const { errors, consoleLines } = await boot(page, '?app=web_pad');
+      await waitForText(page, `${PAD_DATA}/ready.txt`, '1', { timeout: 30_000 });
+      expect(consoleLines.some((l) => PAD_CONNECTED_RE.test(l))).toBe(false);
+      await page.evaluate(() => window.fakePad.connect());
+      await expect.poll(() => consoleLines.some((l) => PAD_CONNECTED_RE.test(l)),
+        { timeout: 10_000, message: consoleLines.join('\n') }).toBe(true);
+      await padTap(page, PAD_BUTTON.A, `${PAD_DATA}/a.txt`, '1');
+      expect(errors).toEqual([]);
+    });
+
+    test('unplugging a gamepad releases the buttons it held', async ({ page }) => {
+      await page.addInitScript(fakeGamepad, { present: true });
+      const { errors, consoleLines } = await boot(page, '?app=web_pad');
+      await waitForText(page, `${PAD_DATA}/ready.txt`, '1', { timeout: 30_000 });
+      await expect.poll(() => consoleLines.some((l) => PAD_CONNECTED_RE.test(l)),
+        { timeout: 10_000, message: consoleLines.join('\n') }).toBe(true);
+      await padSet(page, PAD_BUTTON.A, true);
+      await waitForText(page, `${PAD_DATA}/held.txt`, '16', { timeout: 10_000 });  // PAD_A alone
+      await page.evaluate(() => window.fakePad.disconnect());
+      await waitForText(page, `${PAD_DATA}/held.txt`, '0', { timeout: 10_000 });
+      expect(consoleLines.some((l) => /\[PAD\] Disconnected/.test(l)), consoleLines.join('\n')).toBe(true);
+      expect(errors).toEqual([]);
+    });
+
+    // SDL applies its default mapping (the standard layout) to every pad it
+    // has no mapping for (SDL_gamecontroller.c, s_pDefaultMapping), so a pad
+    // the browser leaves unmapped is read as if it were standard. This pins
+    // that: if SDL starts ignoring such pads, update PicoDeck's
+    // simulator/CLAUDE.md "Game controllers" bullet with it.
+    test('a gamepad without the standard mapping is read as if it had it', async ({ page }) => {
+      await page.addInitScript(fakeGamepad, { present: true, mapping: '' });
+      const { errors, consoleLines } = await boot(page, '?app=web_pad');
+      await waitForText(page, `${PAD_DATA}/ready.txt`, '1', { timeout: 30_000 });
+      await expect.poll(() => consoleLines.some((l) => PAD_CONNECTED_RE.test(l)),
+        { timeout: 10_000, message: consoleLines.join('\n') }).toBe(true);
+      await padTap(page, PAD_BUTTON.A, `${PAD_DATA}/a.txt`, '1');
+      expect(errors).toEqual([]);
+    });
+
+    // The launcher reads pad sources as navigation (D-pad = arrows, A = Enter),
+    // so a player with only a pad can start a game.
+    test('the launcher follows a gamepad', async ({ page }) => {
+      await page.addInitScript(fakeGamepad, { present: true });
+      const { errors, consoleLines } = await boot(page);
+      await waitForLauncher(page, consoleLines);
+      await expect.poll(() => consoleLines.some((l) => PAD_CONNECTED_RE.test(l)),
+        { timeout: 10_000, message: consoleLines.join('\n') }).toBe(true);
+      await stableScreen(page);
+      const before = await page.evaluate(screenHash);
+      await padSet(page, PAD_BUTTON.DOWN, true);
+      await page.waitForFunction(screenChangedFrom, before, { timeout: 10_000 });
+      await padSet(page, PAD_BUTTON.DOWN, false);
+      await padSet(page, PAD_BUTTON.A, true);
+      await waitForFile(page, RUNNING, { timeout: 30_000 });
+      await padSet(page, PAD_BUTTON.A, false);
+      expect(errors).toEqual([]);
+    });
+  });
+
+  // Where the Gamepad API is missing (a Permissions-Policy blocks it, or an
+  // older browser), SDL's controller start-up fails; the page must not.
+  // Passes before the controller change too: it guards it.
+  test('the page runs where the Gamepad API is missing', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'getGamepads', { value: undefined, configurable: true });
+    });
+    const { errors } = await boot(page, '?app=web_test');
+    await waitForFile(page, `${FIXTURE_DATA}/boots.txt`, { timeout: 30_000 });
+    await page.locator('#canvas').focus();
+    await page.keyboard.press('Enter');
+    await waitForText(page, `${FIXTURE_DATA}/enter.txt`, '1', { timeout: 10_000 });
     expect(errors).toEqual([]);
   });
 
