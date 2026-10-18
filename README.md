@@ -23,9 +23,10 @@ web build seam or, while no release has it, the PicoDeck ref in
   `simulator/CLAUDE.md`, "Web build seam".
 - `apps.json`: the demo's apps. `builtin` are folders under PicoDeck's `apps/`;
   `store` are release ZIPs pinned by SHA-256.
-- `sd/`: files laid over PicoDeck's `system/` in the demo's SD image.
-  `sd/system/gamepad.json` binds the gamepad's A and B to Z and X (F4 and
-  F5 stay as their second keys), keys a laptop has without Fn.
+- `sd/system/gamepad.json`: copied into the demo's SD image as
+  `/system/gamepad.json`, after PicoDeck's `system/` (`web.cmake` copies this
+  one file). It binds the gamepad's A and B to Z and X (F4 and F5 stay as
+  their second keys), keys a laptop has without Fn.
 - `picodeck.pin`: the PicoDeck ref CI builds while no PicoDeck release has the
   web build seam yet (`scripts/picodeck-ref.mjs`).
 
