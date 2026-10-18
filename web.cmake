@@ -39,6 +39,12 @@ function(picodeck_web_package target)
     file(REMOVE_RECURSE ${WEB_SD_DIR})
     file(MAKE_DIRECTORY ${WEB_SD_DIR}/apps ${WEB_SD_DIR}/data)
     file(COPY ${PICODECK_ROOT}/system DESTINATION ${WEB_SD_DIR})
+    # The browser's gamepad bindings over PicoDeck's built-in ones: A is Z then
+    # F4, B is X then F5, since a laptop often has F4/F5 only behind Fn. A bound
+    # key still reports as itself, so Z and X still type. Copied after
+    # PicoDeck's system/, so it wins over any gamepad.json that ships there.
+    file(COPY ${PICODECK_WEB_DIR}/sd/system/gamepad.json DESTINATION ${WEB_SD_DIR}/system)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PICODECK_WEB_DIR}/sd/system/gamepad.json)
     # Re-run the configure step when the app list changes.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PICODECK_WEB_DIR}/apps.json)
     file(READ ${PICODECK_WEB_DIR}/apps.json apps_json)

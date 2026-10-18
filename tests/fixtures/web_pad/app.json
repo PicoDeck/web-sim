@@ -1,0 +1,7 @@
+{
+  "id": "net.picodeck.webpad",
+  "name": "Web Pad",
+  "description": "Browser-test fixture (test builds only)",
+  "version": "1.0.0",
+  "author": "PicoDeck"
+}

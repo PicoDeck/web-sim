@@ -13,8 +13,9 @@ const ALL_APPS = [...APPS.builtin, ...APPS.store.map((a) => a.dir)];
 const FIXTURE_DATA = '/sd/data/net.picodeck.webtest';
 const BUSY_DATA = '/sd/data/net.picodeck.webbusy';
 const NATIVE_DATA = '/sd/data/net.picodeck.webnative';
+const PAD_DATA = '/sd/data/net.picodeck.webpad';
 // The test build's fixture apps (tests/fixtures/, the Makefile's FIXTURES).
-const FIXTURE_APPS = ['web_test', 'web_busy', 'web_native', 'web_native_bad', 'web_native_nowasm'];
+const FIXTURE_APPS = ['web_test', 'web_busy', 'web_native', 'web_native_bad', 'web_native_nowasm', 'web_pad'];
 // PicoDeck's launcher writes /system/running.txt when it starts an app and
 // deletes it when the app returns (RUNNING_PATH in PicoDeck's
 // src/os/crashlog.c): here, on the SD image mounted at /sd.
@@ -216,6 +217,30 @@ test.describe('with the fixture apps', () => {
     await page.keyboard.press('Enter');
     await page.waitForFunction((p) => { try { return FS.readFile(p, { encoding: 'utf8' }) === '1'; }
       catch (e) { return false; } }, `${FIXTURE_DATA}/enter.txt`, { timeout: 10_000 });
+  });
+
+  // web_pad (tests/fixtures/web_pad) writes what the gamepad and the typed
+  // characters see. The browser's bindings (sd/system/gamepad.json) make Z
+  // and X the gamepad's A and B; a bound key still reports as itself, so
+  // they type too (PicoDeck's docs/API-Gamepad.md, "Aliasing, not remapping").
+  test('Z and X are the gamepad\'s A and B and still type', async ({ page }) => {
+    const { errors } = await boot(page, '?app=web_pad');
+    await waitForText(page, `${PAD_DATA}/ready.txt`, '1', { timeout: 30_000 });
+    expect(await page.evaluate(fileText, `${PAD_DATA}/label.txt`)).toBe('Z');
+    expect(await page.evaluate(fileText, `${PAD_DATA}/label_alt.txt`)).toBe('F4');
+    await page.locator('#canvas').focus();
+    await page.keyboard.press('z');
+    await waitForText(page, `${PAD_DATA}/a.txt`, '1', { timeout: 10_000 });
+    await waitForText(page, `${PAD_DATA}/chars.txt`, 'z', { timeout: 10_000 });
+    await page.keyboard.press('x');
+    await waitForText(page, `${PAD_DATA}/b.txt`, '1', { timeout: 10_000 });
+    await waitForText(page, `${PAD_DATA}/chars.txt`, 'zx', { timeout: 10_000 });
+    // F4, the PicoCalc's key for A, stays bound as A's second key. (F5, B's,
+    // is left out: a browser may take a synthesized F5 as reload.)
+    await page.keyboard.press('F4');
+    await waitForText(page, `${PAD_DATA}/a.txt`, '2', { timeout: 10_000 });
+    expect(await page.evaluate(fileText, `${PAD_DATA}/chars.txt`)).toBe('zx');
+    expect(errors).toEqual([]);
   });
 
   test('saved data survives a reload', async ({ page }) => {

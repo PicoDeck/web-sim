@@ -16,7 +16,7 @@ EMSDK ?= $(HOME)/emsdk
 EMCMAKE := $(EMSDK)/upstream/emscripten/emcmake
 JOBS := $(shell nproc 2>/dev/null || echo 4)
 # The test build's fixture apps (a CMake list: WEB_SIM_EXTRA_APPS).
-FIXTURES := $(CURDIR)/tests/fixtures/web_test;$(CURDIR)/tests/fixtures/web_busy;$(CURDIR)/tests/fixtures/web_native;$(CURDIR)/tests/fixtures/web_native_bad;$(CURDIR)/tests/fixtures/web_native_nowasm
+FIXTURES := $(CURDIR)/tests/fixtures/web_test;$(CURDIR)/tests/fixtures/web_busy;$(CURDIR)/tests/fixtures/web_native;$(CURDIR)/tests/fixtures/web_native_bad;$(CURDIR)/tests/fixtures/web_native_nowasm;$(CURDIR)/tests/fixtures/web_pad
 # make test DOOM=<a PicoDeck/doom checkout>: also bundle the DOOM staged there
 # by its `make web-stage` (build-web/doom).
 DOOM ?=
