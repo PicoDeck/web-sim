@@ -135,9 +135,9 @@ function waitForNoFile(page, path, options) {
 // mapping, connected, timestamp, axes and buttons from it. Buttons in the
 // standard layout: 0 A (bottom), 1 B, 2 X, 3 Y, 8 Back, 9 Start, 12-15 the
 // D-pad's up, down, left, right, 16 Home. Self-contained: it runs in the page.
-function fakeGamepad({ present = true, mapping = 'standard' } = {}) {
+function fakeGamepad({ present = true, mapping = 'standard', id = 'Fake Pad (STANDARD GAMEPAD)' } = {}) {
   const pad = {
-    id: 'Fake Pad (STANDARD GAMEPAD)', index: 0, mapping, connected: true, timestamp: 1,
+    id, index: 0, mapping, connected: true, timestamp: 1,
     axes: [0, 0, 0, 0],
     buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
   };
@@ -345,10 +345,10 @@ test.describe('with the fixture apps', () => {
       expect(errors).toEqual([]);
     });
 
-    // SDL applies its default mapping (the standard layout) to every pad it
-    // has no mapping for (SDL_gamecontroller.c, s_pDefaultMapping), so a pad
+    // Every pad gets the standard layout (SDL's default mapping, which
+    // PicoDeck's hal_pad.c also registers under each pad's own GUID), so a pad
     // the browser leaves unmapped is read as if it were standard. This pins
-    // that: if SDL starts ignoring such pads, update PicoDeck's
+    // that: if such pads start being ignored, update PicoDeck's
     // simulator/CLAUDE.md "Game controllers" bullet with it.
     test('a gamepad without the standard mapping is read as if it had it', async ({ page }) => {
       await page.addInitScript(fakeGamepad, { present: true, mapping: '' });
@@ -359,6 +359,30 @@ test.describe('with the fixture apps', () => {
       await padTap(page, PAD_BUTTON.A, `${PAD_DATA}/a.txt`, '1');
       expect(errors).toEqual([]);
     });
+
+    // SDL builds a browser pad's GUID from its name and reads the name's 11th
+    // character as a driver tag (SDL_joystick.c, SDL_CreateJoystickGUID;
+    // SDL_IsJoystickHIDAPI/RAWINPUT): 'h' or 'r' there would give the pad a
+    // generated layout with the D-pad and Start elsewhere, not the standard
+    // one. ('w', WGI, needs a byte a name never sets.)
+    for (const id of [
+      '54c-9cc-Wireless Controller',  // 'r': a DualShock 4 as Firefox names it
+      'Joystick (hid)',               // 'h'
+    ]) {
+      test(`a gamepad named "${id}" keeps the standard layout`, async ({ page }) => {
+        await page.addInitScript(fakeGamepad, { present: true, id });
+        const { errors, consoleLines } = await boot(page, '?app=web_pad');
+        await waitForText(page, `${PAD_DATA}/ready.txt`, '1', { timeout: 30_000 });
+        await expect.poll(() => consoleLines.some((l) => PAD_CONNECTED_RE.test(l)),
+          { timeout: 10_000, message: consoleLines.join('\n') }).toBe(true);
+        await padSet(page, PAD_BUTTON.DOWN, true);
+        await waitForText(page, `${PAD_DATA}/held.txt`, '2', { timeout: 10_000 });  // PAD_DOWN alone
+        await padSet(page, PAD_BUTTON.DOWN, false);
+        await waitForText(page, `${PAD_DATA}/held.txt`, '0', { timeout: 10_000 });
+        await padTap(page, PAD_BUTTON.A, `${PAD_DATA}/a.txt`, '1');
+        expect(errors).toEqual([]);
+      });
+    }
 
     // The launcher reads pad sources as navigation (D-pad = arrows, A = Enter),
     // so a player with only a pad can start a game.
@@ -380,9 +404,11 @@ test.describe('with the fixture apps', () => {
     });
   });
 
-  // Where the Gamepad API is missing (a Permissions-Policy blocks it, or an
-  // older browser), SDL's controller start-up fails; the page must not.
-  // Passes before the controller change too: it guards it.
+  // Where the Gamepad API is missing (an older browser), SDL's controller
+  // start-up fails; the page must not. (A Permissions-Policy block makes
+  // getGamepads() throw instead, which Emscripten's libhtml5.js catches and
+  // turns into this case; not run here.) Passes before the controller change
+  // too: it guards it.
   test('the page runs where the Gamepad API is missing', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'getGamepads', { value: undefined, configurable: true });
