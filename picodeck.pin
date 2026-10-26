@@ -1,3 +1,3 @@
 # The PicoDeck ref CI builds while no PicoDeck release has the web build seam
 # with native apps (sim_native_api.c; scripts/picodeck-ref.mjs); must exist on PicoDeck/picodeck.
-0d45bcc1d34089df5b40e20e17ace7e62abcad17
+e9648e85c7cbf156899acbc3944f9a6883c2bf7f
